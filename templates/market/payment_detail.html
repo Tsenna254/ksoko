@@ -1,0 +1,56 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Payment {{ payment.reference }}{% endblock %}
+{% block head %}{% if payment.status == "awaiting" and payment.mpesa_checkout_id %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
+{% block content %}
+<div class="formcard">
+  <h1>Payment {{ payment.reference }}</h1>
+  <p><span class="pill {{ payment.status }}">{{ payment.get_status_display }}</span> &nbsp; <strong>KES {{ payment.amount|floatformat:0|intcomma }}</strong> by {{ payment.get_method_display }}</p>
+
+  {% if payment.status == "awaiting" %}
+    {% if payment.method == "mpesa" %}
+      {% if stk_ready %}
+        {% if payment.mpesa_checkout_id %}
+          <p>We sent a payment prompt to <strong>{{ payment.phone }}</strong>. Enter your M-Pesa PIN to pay. This page updates by itself.</p>
+          {% if payment.note %}<p class="err">{{ payment.note }}</p>{% endif %}
+        {% else %}<p>We couldn’t send the prompt to {{ payment.phone }} yet.</p>{% endif %}
+        <form method="post" action="{% url 'payment_retry' payment.reference %}" class="stack">{% csrf_token %}<button class="solid">Send the prompt again</button></form>
+      {% elif manual_number %}
+        <h2>Pay with M-Pesa</h2>
+        <ol class="steps">
+          <li>Open M-Pesa, then <strong>Lipa na M-Pesa</strong> and choose <strong>{{ manual_kind }}</strong>.</li>
+          <li>Business number: <strong>{{ manual_number }}</strong>{% if manual_kind == "Paybill" %}. Account number: <strong>{{ payment.reference }}</strong>{% endif %}</li>
+          <li>Amount: <strong>KES {{ payment.amount|floatformat:0|intcomma }}</strong>, then enter your PIN.</li>
+          <li>Type the 10-character code from the M-Pesa confirmation message below.</li>
+        </ol>
+        <form method="post" action="{% url 'payment_code' payment.reference %}" class="stack">{% csrf_token %}
+          <label for="code">M-Pesa confirmation code</label>
+          <input id="code" name="code" type="text" maxlength="10" placeholder="QGH7ABC123" autocomplete="off" style="text-transform:uppercase" required>
+          <button class="solid">I’ve paid</button>
+        </form>
+      {% else %}<p class="msg error">M-Pesa isn’t set up on this store yet (no Paybill or Till number).</p>{% endif %}
+    {% else %}
+      {% if card_ready %}
+        <form method="post" action="{% url 'payment_retry' payment.reference %}" class="stack">{% csrf_token %}<button class="solid">Pay with card</button></form>
+        <p class="meta">You’ll be taken to our card processor’s secure page.</p>
+      {% elif not test_mode %}<p class="msg error">Card payments aren’t available yet.</p>{% endif %}
+    {% endif %}
+
+    {% if test_mode %}
+    <div class="testbox"><strong>Test mode</strong><p class="meta">No money moves. This button pretends the customer paid so you can try the confirm step in the dashboard.</p>
+      <form method="post" action="{% url 'payment_test' payment.reference %}">{% csrf_token %}<button class="ghost sm">Simulate a successful payment</button></form></div>
+    {% endif %}
+    <form method="post" action="{% url 'payment_cancel' payment.reference %}" style="margin-top:14px" onsubmit="return confirm('Cancel this payment and return the items to stock?')">{% csrf_token %}<button class="linkbtn">Cancel this payment</button></form>
+
+  {% elif payment.status == "paid" %}
+    <p class="msg success">We’ve received your payment details{% if payment.provider_ref %} (<strong>{{ payment.provider_ref }}</strong>){% endif %}. Our team will confirm it shortly, then your order is complete.</p>
+  {% elif payment.status == "confirmed" %}
+    <p class="msg success">Payment confirmed. Your order is complete. <a href="{% url 'my_orders' %}">View my orders</a> and rate your purchase.</p>
+  {% else %}
+    <p class="msg error">This payment was {{ payment.get_status_display|lower }}.{% if payment.note %} {{ payment.note }}.{% endif %} Any items were returned to stock.</p>
+    <a class="ghost" href="{% url 'listing_list' %}">Keep shopping</a>
+  {% endif %}
+
+  <h2 style="margin-top:22px">Items in this payment</h2>
+  <ul class="slist">{% for o in orders %}<li><span>{{ o.title }}{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}</span><strong>KES {{ o.total|floatformat:0|intcomma }}</strong></li>{% endfor %}</ul>
+</div>
+{% endblock %}

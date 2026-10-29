@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Rate your purchase{% endblock %}
+{% block content %}
+<div class="formcard">
+  <h1>Rate your purchase</h1>
+  <p class="meta">{{ order.title }} from {{ order.seller.username }}</p>
+  <form method="post">{% csrf_token %}
+    {{ form.non_field_errors }}
+    <fieldset class="rate"><legend>How good was the item?</legend>
+      <div class="starpick">{% for n in "54321" %}<input type="radio" name="product_rating" id="p{{ n }}" value="{{ n }}" required><label for="p{{ n }}" title="{{ n }} out of 5">★</label>{% endfor %}</div>
+      {{ form.product_rating.errors }}
+    </fieldset>
+    <fieldset class="rate"><legend>How was the seller? (communication, speed, packaging)</legend>
+      <div class="starpick">{% for n in "54321" %}<input type="radio" name="seller_rating" id="s{{ n }}" value="{{ n }}" required><label for="s{{ n }}" title="{{ n }} out of 5">★</label>{% endfor %}</div>
+      {{ form.seller_rating.errors }}
+    </fieldset>
+    <div class="fld"><label for="id_comment">Comment</label>{{ form.comment }}{{ form.comment.errors }}</div>
+    <button class="solid">Post rating</button>
+    <a class="ghost" href="{{ order.listing.get_absolute_url }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

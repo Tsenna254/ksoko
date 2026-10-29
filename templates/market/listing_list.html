@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}Results for {{ q }}{% elif current_category %}{{ current_category.name }}{% else %}All listings{% endif %}{% endblock %}
+{% block content %}
+{% if list_banner %}{% include "market/_promo.html" with m=list_banner %}{% endif %}
+<div class="hd" style="margin-top:28px">
+  <h2>{% if q %}Results for “{{ q }}”{% elif current_category %}{{ current_category.name }}{% else %}All listings{% endif %} ({{ page.paginator.count }})</h2>
+  <form method="get" class="filters">
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {% if slug %}<input type="hidden" name="category" value="{{ slug }}">{% endif %}
+    <select name="type" aria-label="Format" onchange="this.form.submit()">
+      <option value="">All formats</option>
+      <option value="buy" {% if kind == "buy" %}selected{% endif %}>Buy it now</option>
+      <option value="auction" {% if kind == "auction" %}selected{% endif %}>Auction</option>
+    </select>
+    <select name="sort" aria-label="Sort" onchange="this.form.submit()">
+      <option value="new" {% if sort == "new" %}selected{% endif %}>Newest</option>
+      <option value="low" {% if sort == "low" %}selected{% endif %}>Price: low to high</option>
+      <option value="high" {% if sort == "high" %}selected{% endif %}>Price: high to low</option>
+      <option value="ending" {% if sort == "ending" %}selected{% endif %}>Ending soonest</option>
+    </select>
+  </form>
+</div>
+{% if page.object_list %}
+<div class="grid">{% for l in page.object_list %}{% include "market/_card.html" %}{% endfor %}</div>
+<nav class="pager" aria-label="Pages">
+  {% if page.has_previous %}<a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
+</nav>
+{% else %}<p class="empty">No listings match your search. Check the spelling or try a broader word.</p>
+{% if suggested %}<section class="sec"><div class="hd"><h2>You might like</h2></div><div class="grid">{% for l in suggested %}{% include "market/_card.html" %}{% endfor %}</div></section>{% endif %}{% endif %}
+{% endblock %}

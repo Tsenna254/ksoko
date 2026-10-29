@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Campaigns for sellers{% endblock %}
+{% block content %}
+<h1 class="stitle" style="margin-top:28px">Campaigns</h1>
+<p class="lead">Join store-wide promotions to reach more shoppers. Your normal prices come back automatically when a campaign ends.</p>
+
+<h2>Open to join</h2>
+{% for row in open_campaigns %}{% with c=row.c %}
+<article class="campcard">
+  <div>
+    <h3><a href="{{ c.get_absolute_url }}">{{ c.name }}</a> <span class="pill {{ c.phase }}">{{ c.phase|capfirst }}</span></h3>
+    {% if c.description %}<p>{{ c.description }}</p>{% endif %}
+    <ul class="terms">
+      <li><strong>{{ c.discount_percent }}% off</strong> your joined listings</li>
+      <li>Runs {{ c.starts_at|date:"j M" }} to {{ c.ends_at|date:"j M Y" }}{% if c.join_deadline %}. Join by {{ c.join_deadline|date:"j M, H:i" }}{% endif %}</li>
+      <li>Up to {{ c.max_listings_per_seller }} listing{{ c.max_listings_per_seller|pluralize }} per seller{% if c.min_seller_rating %}, seller rating {{ c.min_seller_rating }}+{% endif %}</li>
+      <li>{% if c.requires_approval %}Entries are checked by our team first{% else %}Entries are approved automatically{% endif %}</li>
+      <li>{% for cat in c.categories.all %}{{ cat.name }}{% if not forloop.last %}, {% endif %}{% empty %}All categories{% endfor %}</li>
+    </ul>
+  </div>
+  <div class="campact">
+    {% if row.blocker %}<p class="err">{{ row.blocker }}</p>
+    {% elif row.slots < 1 %}<p class="meta">You’ve used all your spots.</p>
+    {% elif not row.eligible %}<p class="meta">You have no eligible fixed-price listings. <a href="{% url 'sell' %}">List an item</a>.</p>
+    {% else %}<a class="solid" href="{% url 'campaign_join' c.slug %}">Join campaign</a><span class="meta">{{ row.eligible }} eligible listing{{ row.eligible|pluralize }}, {{ row.slots }} spot{{ row.slots|pluralize }} left</span>{% endif %}
+  </div>
+</article>{% endwith %}
+{% empty %}<p class="empty">No campaigns are open right now. Check back soon.</p>{% endfor %}
+
+<h2 style="margin-top:32px">My entries</h2>
+{% if entries %}<div class="tablewrap"><table>
+  <thead><tr><th>Campaign</th><th>Listing</th><th>Status</th><th>Price</th><th></th></tr></thead>
+  <tbody>{% for e in entries %}<tr>
+    <td><a href="{{ e.campaign.get_absolute_url }}">{{ e.campaign.name }}</a></td>
+    <td><a href="{{ e.listing.get_absolute_url }}">{{ e.listing.title|truncatechars:40 }}</a></td>
+    <td><span class="pill {{ e.status }}">{{ e.get_status_display }}</span>{% if e.applied %} <span class="pill confirmed">Discount on</span>{% endif %}</td>
+    <td>KES {{ e.listing.price|floatformat:0|intcomma }}</td>
+    <td>{% if e.status == "pending" or e.status == "approved" %}<form method="post" action="{% url 'entry_withdraw' e.pk %}" onsubmit="return confirm('Remove this listing from the campaign?')">{% csrf_token %}<button class="linkbtn">Withdraw</button></form>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% else %}<p class="empty">You haven’t joined any campaigns yet.</p>{% endif %}
+{% endblock %}

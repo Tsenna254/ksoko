@@ -1,0 +1,101 @@
+{% extends "base.html" %}{% load humanize market_extras %}
+{% block title %}{{ listing.title }}{% endblock %}
+{% block content %}
+<div class="detail">
+  <div>
+    <div class="mainimg">
+      {% with c=listing.cover %}{% if c %}<img id="big" src="{{ c.image.url }}" alt="{{ listing.title }}">{% else %}<span class="noimg">No photo</span>{% endif %}{% endwith %}
+    </div>
+    <div class="thumbs">
+      {% for img in listing.images.all %}<button type="button" class="tn" data-src="{{ img.image.url }}" aria-label="Show photo {{ forloop.counter }}"><img src="{{ img.image.url }}" alt=""></button>{% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <a class="meta" href="{% url 'listing_list' %}?category={{ listing.category.slug }}">{{ listing.category.name }}</a>
+    <h1>{{ listing.title }}</h1>
+    <p class="cond">Condition: {{ listing.get_condition_display }}</p>
+    <p class="ratingline">
+      {% if product_rating.n %}<a href="#reviews" class="stars">{{ product_rating.avg|stars }}</a> <strong>{{ product_rating.avg|floatformat:1 }}</strong> <span class="meta">({{ product_rating.n }} review{{ product_rating.n|pluralize }})</span>
+      {% else %}<span class="meta">No reviews yet</span>{% endif %}
+    </p>
+    <p class="pr lg">KES {{ listing.price|floatformat:0|intcomma }}{% if listing.original_price %}<s>KES {{ listing.original_price|floatformat:0|intcomma }}</s>{% endif %}</p>
+    {% if listing.discount_percent %}<p class="off">{{ listing.discount_percent }}% off</p>{% endif %}
+
+    {% if not listing.is_open %}
+      <p class="msg info">This listing is {{ listing.get_status_display|lower }}.</p>
+    {% elif listing.is_auction %}
+      <p class="meta">{{ bid_count }} bid{{ bid_count|pluralize }}. Ends in {{ listing.ends_at|timeuntil }}.</p>
+    {% endif %}
+
+    {% if can_bid %}
+      {% if user.is_authenticated %}
+      <form method="post" action="{% url 'place_bid' listing.pk %}" class="stack">{% csrf_token %}
+        <label for="id_amount">Your bid (minimum KES {{ listing.min_next_bid|floatformat:0|intcomma }})</label>
+        {{ bid_form.amount }}
+        <button class="solid">Place bid</button>
+      </form>
+      {% else %}<a class="solid" href="{% url 'login' %}?next={{ request.path }}">Sign in to bid</a>{% endif %}
+    {% elif can_buy %}
+      {% if user.is_authenticated %}
+      <form method="post" action="{% url 'cart_add' listing.pk %}" class="stack">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button class="solid" name="buy_now" value="1">Buy it now</button>
+        <button class="ghost">Add to cart</button>
+      </form>
+      {% else %}<a class="solid" href="{% url 'login' %}?next={{ request.path }}">Sign in to buy</a>{% endif %}
+    {% endif %}
+
+    {% if won_order %}<p class="msg success">You won this auction at KES {{ won_order.total|floatformat:0|intcomma }} (delivery included). <a href="{% url 'cart' %}">Pay in your cart</a>.</p>{% endif %}
+    {% if order_to_rate %}<a class="solid" href="{% url 'review_create' order_to_rate.pk %}">Rate this purchase</a>{% endif %}
+
+    {% if user.is_authenticated and not is_seller %}
+    <form method="post" action="{% url 'toggle_watch' listing.pk %}" class="stack">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <button class="ghost">{% if watching %}Remove from watchlist{% else %}Add to watchlist{% endif %}</button>
+    </form>
+    {% endif %}
+
+    {% if is_seller %}
+    <div class="seller-actions">
+      {% if listing.status == "active" %}<a class="ghost" href="{% url 'listing_edit' listing.pk %}">Edit listing</a>{% endif %}
+      <a class="ghost" href="{% url 'listing_delete' listing.pk %}">Delete</a>
+    </div>
+    {% endif %}
+
+    <dl class="facts">
+      {% if not listing.is_auction and listing.is_open %}<dt>Available</dt><dd>{{ listing.quantity }}</dd>{% endif %}
+      <dt>Delivery</dt><dd>{% if listing.delivery_fee %}KES {{ listing.delivery_fee|floatformat:0|intcomma }}{% else %}Free{% endif %}</dd>
+      <dt>Seller</dt><dd><a href="{% url 'seller_profile' listing.seller.username %}">{{ listing.seller.username }}</a>
+        {% if seller_rating.n %}<span class="stars">★</span> {{ seller_rating.avg|floatformat:1 }} <span class="meta">({{ seller_rating.n }})</span>{% else %}<span class="meta">(no ratings yet)</span>{% endif %}</dd>
+      <dt>Listed</dt><dd>{{ listing.created_at|date:"j M Y" }}</dd>
+    </dl>
+  </div>
+</div>
+
+<section class="sec">
+  <h2>Description</h2>
+  <div class="prose">{{ listing.description|linebreaks }}</div>
+</section>
+
+{% if similar %}<section class="sec"><h2>You may also like</h2><div class="grid" style="margin-top:14px">{% for l in similar %}{% include "market/_card.html" %}{% endfor %}</div></section>{% endif %}
+
+{% if listing.is_auction and bids %}
+<section class="sec"><h2>Recent bids</h2>
+  <ul class="bids">{% for b in bids %}<li><span>{{ b.bidder.username|slice:":1" }}***</span><strong>KES {{ b.amount|floatformat:0|intcomma }}</strong><span>{{ b.placed_at|timesince }} ago</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="sec" id="reviews"><h2>Reviews</h2>
+  {% for r in reviews %}
+  <div class="review">
+    <div><span class="stars">{{ r.product_rating|stars }}</span> <span class="meta">Item</span> &nbsp; <span class="stars">{{ r.seller_rating|stars }}</span> <span class="meta">Seller</span></div>
+    {% if r.comment %}<p>{{ r.comment }}</p>{% endif %}
+    <span class="meta">{{ r.reviewer.username|slice:":1" }}*** on {{ r.created_at|date:"j M Y" }}</span>
+  </div>
+  {% empty %}<p class="empty">No reviews yet. Buyers can rate this item after they purchase it.</p>{% endfor %}
+</section>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll(".thumbs [data-src]").forEach(function(b){b.addEventListener("click",function(){document.getElementById("big").src=b.dataset.src})});
+</script>{% endblock %}

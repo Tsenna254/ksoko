@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+{% block content %}
+<div class="hd" style="margin-top:28px"><h2>Watchlist</h2></div>
+{% if items %}<div class="grid">{% for l in items %}{% include "market/_card.html" %}{% endfor %}</div>
+{% else %}<p class="empty">Nothing here yet. Use “Add to watchlist” on any listing to keep track of it.</p>{% endif %}
+{% endblock %}

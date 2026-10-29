@@ -1,0 +1,17 @@
+Hi {{ user.username }},
+
+{% if is_register %}Welcome to {{ site }}. Use this code to confirm your email address:{% else %}Someone signed in to your {{ site }} account from a network we don't recognise. If it was you, enter this code to continue:{% endif %}
+
+    {{ code }}
+
+The code works for {{ minutes }} minutes and can only be used once.
+{% if not is_register %}
+Sign-in details
+  Time: {{ when }}
+  Network: {{ ip }}
+
+If this wasn't you, don't share the code. Your account is safe until the code is entered, but change your password as a precaution.
+{% else %}
+If you didn't create an account, you can ignore this email.
+{% endif %}
+Never share this code with anyone. {{ site }} staff will never ask for it.

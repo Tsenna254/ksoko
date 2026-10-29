@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Delete listing{% endblock %}
+{% block content %}
+<div class="formcard">
+  <h1>Delete this listing?</h1>
+  <p>“{{ listing.title }}” and its photos will be removed. This can’t be undone.</p>
+  <form method="post">{% csrf_token %}
+    <button class="solid danger">Delete listing</button>
+    <a class="ghost" href="{{ listing.get_absolute_url }}">Keep listing</a>
+  </form>
+</div>
+{% endblock %}

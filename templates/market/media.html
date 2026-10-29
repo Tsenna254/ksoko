@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Promo media{% endblock %}
+{% block content %}
+{% include "market/_manage_nav.html" with active="media" %}
+<h1 class="stitle">Promotional media</h1>
+<p class="lead">Upload banner images and short videos. Active ones appear on the homepage or at the top of listing pages.</p>
+<div class="cartgrid">
+  <div>
+    {% if assets %}<div class="mgrid">{% for a in assets %}
+      <article class="mcard{% if not a.is_active %} off{% endif %}">
+        <div class="mprev">{% if a.kind == "video" %}<video src="{{ a.file.url }}" muted loop playsinline controls preload="metadata"></video>{% else %}<img src="{{ a.file.url }}" alt="{{ a.title }}">{% endif %}</div>
+        <strong>{{ a.title }}</strong>
+        <span class="meta">{{ a.get_kind_display }}, {{ a.get_placement_display }}, order {{ a.sort_order }}{% if a.link_url %}<br>Links to {{ a.link_url }}{% endif %}</span>
+        <div class="acts">
+          <form method="post" action="{% url 'media_action' a.pk 'toggle' %}">{% csrf_token %}<button class="ghost sm">{% if a.is_active %}Hide{% else %}Show{% endif %}</button></form>
+          <form method="post" action="{% url 'media_action' a.pk 'delete' %}" onsubmit="return confirm('Delete this file for good?')">{% csrf_token %}<button class="linkbtn">Delete</button></form>
+        </div>
+      </article>{% endfor %}</div>
+    {% else %}<p class="empty">Nothing uploaded yet. Use the form to add your first banner.</p>{% endif %}
+  </div>
+  <form method="post" enctype="multipart/form-data" class="summary" novalidate>{% csrf_token %}
+    <h2>Upload</h2>
+    {{ form.non_field_errors }}
+    {% for f in form %}<div class="fld{% if f.name == 'is_active' %} chkrow{% endif %}">{{ f.label_tag }}{{ f }}{% if f.help_text %}<small class="meta">{{ f.help_text }}</small>{% endif %}{{ f.errors }}</div>{% endfor %}
+    <small class="meta">Images: JPG, PNG, WebP up to 5 MB. Videos: MP4 or WebM up to 25 MB; they play muted and on a loop.</small>
+    <button class="solid">Upload</button>
+  </form>
+</div>
+{% endblock %}

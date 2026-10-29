@@ -1,0 +1,8 @@
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#14201A">
+  <h2 style="margin:0 0 12px;color:#0A6B3D">{{ brand }}</h2>
+  <p>Hi {{ user.get_username }},</p>
+  <p>We got a request to reset the password for your account. Choose a new one with the button below.</p>
+  <p style="margin:24px 0"><a href="{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}" style="background:#0A6B3D;color:#fff;text-decoration:none;font-weight:bold;padding:12px 24px;border-radius:99px;display:inline-block">Reset my password</a></p>
+  <p style="color:#5C6B63">The link works for {{ minutes }} minutes and can only be used once. If the button doesn't work, copy this address into your browser:<br>{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}</p>
+  <p style="color:#5C6B63">If you didn't ask for this, ignore this email. Your password won't change unless someone opens the link, so don't forward it.</p>
+</div>

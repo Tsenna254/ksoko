@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Your cart{% endblock %}
+{% block content %}
+<h1 class="stitle" style="margin-top:28px">Your cart</h1>
+{% if cart.lines or cart.unpaid %}
+<div class="cartgrid">
+  <div>
+    {% for l in cart.lines %}
+    <article class="crow{% if not l.ok %} unavailable{% endif %}">
+      <a class="cimg" href="{{ l.listing.get_absolute_url }}">{% with c=l.listing.cover %}{% if c %}<img src="{{ c.image.url }}" alt="">{% else %}<span>{{ l.listing.title|first }}</span>{% endif %}{% endwith %}</a>
+      <div class="cinfo">
+        <a href="{{ l.listing.get_absolute_url }}">{{ l.listing.title }}</a>
+        <span class="meta">KES {{ l.listing.price|floatformat:0|intcomma }} each. Seller: {{ l.listing.seller.username }}</span>
+        <span class="meta">{% if l.fee %}Delivery KES {{ l.fee|floatformat:0|intcomma }}{% else %}Free delivery{% endif %}</span>
+        {% if not l.ok %}<span class="err">This item is no longer available in this quantity. Update it or remove it.</span>{% endif %}
+      </div>
+      <form method="post" action="{% url 'cart_update' l.item.pk %}" class="qty">{% csrf_token %}
+        <input type="number" name="quantity" min="0" max="{{ l.listing.quantity }}" value="{{ l.qty }}" aria-label="Quantity for {{ l.listing.title }}">
+        <button class="ghost sm">Update</button>
+      </form>
+      <strong class="ltotal">KES {{ l.line|floatformat:0|intcomma }}</strong>
+      <form method="post" action="{% url 'cart_remove' l.item.pk %}">{% csrf_token %}<button class="linkbtn">Remove</button></form>
+    </article>
+    {% endfor %}
+
+    {% if cart.unpaid %}
+    <h2 style="margin:24px 0 8px">Auctions you won</h2>
+    {% for o in cart.unpaid %}
+    <article class="crow won">
+      <div class="cinfo"><a href="{{ o.listing.get_absolute_url }}">{{ o.title }}</a><span class="meta">Winning bid KES {{ o.amount|floatformat:0|intcomma }}{% if o.delivery_fee %} plus delivery KES {{ o.delivery_fee|floatformat:0|intcomma }}{% endif %}</span></div>
+      <strong class="ltotal">KES {{ o.total|floatformat:0|intcomma }}</strong>
+    </article>
+    {% endfor %}{% endif %}
+  </div>
+
+  <aside class="summary">
+    <h2>Order summary</h2>
+    <dl>
+      <dt>Items</dt><dd>KES {{ cart.subtotal|floatformat:0|intcomma }}</dd>
+      <dt>Delivery</dt><dd>KES {{ cart.delivery|floatformat:0|intcomma }}</dd>
+      {% if cart.unpaid %}<dt>Won auctions</dt><dd>KES {{ cart.won_total|floatformat:0|intcomma }}</dd>{% endif %}
+      <dt class="grand">Total</dt><dd class="grand">KES {{ cart.total|floatformat:0|intcomma }}</dd>
+    </dl>
+    {% if cart.blocked %}<p class="err">Fix the unavailable items to continue.</p><span class="solid disabled" aria-disabled="true">Checkout</span>
+    {% else %}<a class="solid" href="{% url 'checkout' %}">Checkout</a>{% endif %}
+    <a class="ghost" href="{% url 'listing_list' %}">Keep shopping</a>
+  </aside>
+</div>
+{% else %}<p class="empty">Your cart is empty. <a href="{% url 'listing_list' %}">Browse listings.</a></p>{% endif %}
+{% endblock %}

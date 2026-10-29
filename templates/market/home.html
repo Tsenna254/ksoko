@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div class="big{% if site.hero_background %} hasimg{% endif %}"{% if site.hero_background %} style="--heroimg:url('{{ site.hero_background.url }}');--tint:{{ site.hero_overlay }}%"{% endif %}>
+    <h1>{{ site.hero_headline }}</h1>
+    <p>{{ site.hero_subtext }}</p>
+    <a class="btn f" href="{% url 'listing_list' %}">Start shopping</a>
+    <a class="btn" href="{% url 'sell' %}">Sell an item</a>
+  </div>
+  <div class="side">
+    <a class="tile t1" href="{% url 'listing_list' %}?type=auction&sort=ending"><h3>Auctions ending soon</h3><span>Place a bid before the timer runs out.</span></a>
+    <a class="tile t2" href="{% url 'sell' %}"><h3>Upload your first listing</h3><span>Add photos and a price. It takes a few minutes.</span></a>
+  </div>
+</section>
+
+{% if banners %}<section class="promos">{% for m in banners %}{% include "market/_promo.html" %}{% endfor %}</section>{% endif %}
+
+{% if campaigns %}<section class="sec"><div class="hd"><h2>Campaigns</h2></div>
+<div class="camps">{% for c in campaigns %}
+  <a class="camp"{% if c.banner %} style="background-image:linear-gradient(rgba(10,107,61,.78),rgba(10,107,61,.78)),url('{{ c.banner.url }}')"{% endif %} href="{{ c.get_absolute_url }}">
+    <span class="pill {{ c.phase }}">{% if c.phase == "live" %}Live now{% else %}Starts {{ c.starts_at|date:"j M" }}{% endif %}</span>
+    <strong>{{ c.name }}</strong><span class="bigoff">{{ c.discount_percent }}% off</span>
+    <span class="meta">Until {{ c.ends_at|date:"j M" }}</span>
+  </a>{% endfor %}</div></section>{% endif %}
+
+<div class="circles">
+  {% for c in categories %}<a class="circ" href="{% url 'listing_list' %}?category={{ c.slug }}"><span>{{ c.name|first }}</span>{{ c.name }}</a>{% endfor %}
+</div>
+
+{% if recs %}
+<section class="sec" id="for-you">
+  <div class="hd"><h2>{% if rec_mode == "personal" %}Recommended for you{% else %}Trending now{% endif %}</h2>
+    <div class="recctl">
+      {% if rec_mode == "personal" %}<form method="post" action="{% url 'personalisation' 'clear' %}">{% csrf_token %}<button class="linkbtn">Clear my history</button></form>{% endif %}
+      {% if personalise_on %}<form method="post" action="{% url 'personalisation' 'off' %}">{% csrf_token %}<button class="linkbtn">Turn off personalisation</button></form>
+      {% else %}<form method="post" action="{% url 'personalisation' 'on' %}">{% csrf_token %}<button class="linkbtn">Turn on personalisation</button></form>{% endif %}
+    </div></div>
+  {% if recent_searches %}<div class="chips"><span class="meta">Your recent searches:</span>{% for s in recent_searches %}<a class="chip" href="{% url 'listing_list' %}?q={{ s|urlencode }}">{{ s }}</a>{% endfor %}</div>{% endif %}
+  <div class="grid">{% for l in recs %}{% include "market/_card.html" %}{% endfor %}</div>
+  <p class="meta" style="margin-top:10px">{% if personalise_on %}Picked from the searches and items you've looked at on this site.{% else %}Personalisation is off, so these are the most popular items.{% endif %}</p>
+</section>
+{% endif %}
+
+{% if deals %}<section class="sec"><div class="hd"><h2>Today’s deals</h2></div>
+<div class="grid">{% for l in deals %}{% include "market/_card.html" %}{% endfor %}</div></section>{% endif %}
+
+{% if auctions %}<section class="sec"><div class="hd"><h2>Auctions ending soon</h2><a href="{% url 'listing_list' %}?type=auction&sort=ending">See all</a></div>
+<div class="grid">{% for l in auctions %}{% include "market/_card.html" %}{% endfor %}</div></section>{% endif %}
+
+<section class="sec"><div class="hd"><h2>Recently listed</h2><a href="{% url 'listing_list' %}">See all</a></div>
+{% if recent %}<div class="grid">{% for l in recent %}{% include "market/_card.html" %}{% endfor %}</div>
+{% else %}<p class="empty">No listings yet. <a href="{% url 'sell' %}">Be the first to list an item.</a></p>{% endif %}</section>
+{% endblock %}

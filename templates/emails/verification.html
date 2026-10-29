@@ -1,0 +1,10 @@
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#14201A">
+  <h2 style="margin:0 0 12px;color:#0A6B3D">{{ site }}</h2>
+  <p>Hi {{ user.username }},</p>
+  <p>{% if is_register %}Welcome! Use this code to confirm your email address:{% else %}Someone signed in to your account from a network we don't recognise. If it was you, enter this code to continue:{% endif %}</p>
+  <p style="font-size:34px;font-weight:bold;letter-spacing:8px;background:#F3F4F1;border-radius:12px;padding:16px;text-align:center;margin:20px 0">{{ code }}</p>
+  <p>The code works for {{ minutes }} minutes and can only be used once.</p>
+  {% if not is_register %}<p style="color:#5C6B63">Time: {{ when }}<br>Network: {{ ip }}<br>If this wasn't you, don't share the code and change your password as a precaution.</p>
+  {% else %}<p style="color:#5C6B63">If you didn't create an account, you can ignore this email.</p>{% endif %}
+  <p style="color:#5C6B63;font-size:13px">Never share this code with anyone. {{ site }} staff will never ask for it.</p>
+</div>

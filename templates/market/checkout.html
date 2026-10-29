@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Checkout{% endblock %}
+{% block content %}
+<h1 class="stitle" style="margin-top:28px">Checkout</h1>
+<div class="cartgrid">
+  <form method="post" class="payform" novalidate>{% csrf_token %}
+    {{ form.non_field_errors }}
+    <section class="scard">
+      <h2>Payment method</h2><p class="sub">Choose how you want to pay. A member of our team confirms every payment before your order is completed.</p>
+      <div class="seg" role="radiogroup" aria-label="Payment method">
+        <div><input type="radio" name="method" id="m-mpesa" value="mpesa" {% if form.method.value != "card" %}checked{% endif %}><label for="m-mpesa">M-Pesa<small>Pay from your phone</small></label></div>
+        <div><input type="radio" name="method" id="m-card" value="card" {% if form.method.value == "card" %}checked{% endif %}><label for="m-card">Card<small>Visa or Mastercard</small></label></div>
+      </div>
+      {{ form.method.errors }}
+      <div class="fld" id="phonew" style="margin-top:16px"><label for="id_phone">M-Pesa phone number</label>
+        <input type="text" name="phone" id="id_phone" inputmode="tel" autocomplete="tel" placeholder="0712 345 678" value="{{ form.phone.value|default:'' }}">
+        <small class="meta">You’ll get a prompt on this number, or steps to pay by Paybill or Till.</small>{{ form.phone.errors }}</div>
+      <p class="meta" id="cardnote" hidden>You’ll be sent to our card processor’s secure page. Your card details never reach Ksoko.</p>
+    </section>
+    <button class="solid">Pay KES {{ cart.total|floatformat:0|intcomma }}</button>
+    <a class="ghost" href="{% url 'cart' %}">Back to cart</a>
+  </form>
+
+  <aside class="summary">
+    <h2>Your order</h2>
+    <ul class="slist">
+      {% for l in cart.lines %}<li><span>{{ l.listing.title|truncatechars:34 }} × {{ l.qty }}</span><strong>KES {{ l.line|floatformat:0|intcomma }}</strong></li>{% endfor %}
+      {% for o in cart.unpaid %}<li><span>Won: {{ o.title|truncatechars:30 }}</span><strong>KES {{ o.amount|floatformat:0|intcomma }}</strong></li>{% endfor %}
+    </ul>
+    <dl>
+      <dt>Delivery</dt><dd>KES {{ cart.delivery|floatformat:0|intcomma }}{% if cart.unpaid %} + auction delivery{% endif %}</dd>
+      <dt class="grand">Total</dt><dd class="grand">KES {{ cart.total|floatformat:0|intcomma }}</dd>
+    </dl>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function(){
+  var radios=document.querySelectorAll("input[name=method]");
+  function sync(){var card=document.getElementById("m-card").checked;document.getElementById("phonew").hidden=card;document.getElementById("cardnote").hidden=!card}
+  radios.forEach(function(r){r.addEventListener("change",sync)});sync();
+})();
+</script>{% endblock %}

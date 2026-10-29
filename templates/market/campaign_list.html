@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Campaigns{% endblock %}
+{% block content %}
+{% include "market/_manage_nav.html" with active="campaigns" %}
+<div class="hd"><h1 class="stitle">Campaigns</h1><a class="solid" href="{% url 'campaign_new' %}">New campaign</a></div>
+{% if items %}<div class="tablewrap"><table>
+  <thead><tr><th>Campaign</th><th>Status</th><th>Discount</th><th>Runs</th><th>Entries</th><th></th></tr></thead>
+  <tbody>{% for c in items %}<tr>
+    <td><a href="{% url 'campaign_edit' c.pk %}"><strong>{{ c.name }}</strong></a></td>
+    <td><span class="pill {{ c.phase }}">{{ c.phase|capfirst }}</span></td>
+    <td>{{ c.discount_percent }}%</td>
+    <td>{{ c.starts_at|date:"j M" }} to {{ c.ends_at|date:"j M Y" }}</td>
+    <td>{{ c.n_entries }}{% if c.n_pending %} <span class="pill paid">{{ c.n_pending }} to approve</span>{% endif %}</td>
+    <td><a href="{% url 'campaign_edit' c.pk %}">Manage</a></td>
+  </tr>{% endfor %}</tbody></table></div>
+{% else %}<p class="empty">No campaigns yet. <a href="{% url 'campaign_new' %}">Create the first one.</a></p>{% endif %}
+{% endblock %}

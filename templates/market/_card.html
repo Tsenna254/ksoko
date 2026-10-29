@@ -1,0 +1,23 @@
+{% load humanize market_extras %}
+<article class="li">
+  <a class="th" href="{{ l.get_absolute_url }}">
+    {% with c=l.cover %}{% if c %}<img src="{{ c.image.url }}" alt="{{ l.title }}" loading="lazy">{% else %}<span>{{ l.title|first }}</span>{% endif %}{% endwith %}
+    {% if not l.is_open %}<em class="tag">{{ l.get_status_display }}</em>{% endif %}
+    {% with camp=l.active_campaign %}{% if camp %}<em class="tag camp">{{ camp.badge }}</em>{% endif %}{% endwith %}
+  </a>
+  <h3><a href="{{ l.get_absolute_url }}">{{ l.title }}</a></h3>
+  {% if l.rec_reason %}<span class="reason">{{ l.rec_reason }}</span>{% endif %}
+  <span class="cond">{{ l.get_condition_display }}</span>
+  {% if l.num_reviews %}<span class="meta"><span class="stars" aria-label="{{ l.product_avg|floatformat:1 }} out of 5">{{ l.product_avg|stars }}</span> {{ l.product_avg|floatformat:1 }} ({{ l.num_reviews }})</span>{% endif %}
+  <span class="pr">KES {{ l.price|floatformat:0|intcomma }}{% if l.original_price %}<s>KES {{ l.original_price|floatformat:0|intcomma }}</s>{% endif %}</span>
+  {% if l.discount_percent %}<span class="off">{{ l.discount_percent }}% off</span>{% endif %}
+  {% if l.is_auction %}
+    <span class="meta">{{ l.num_bids }} bid{{ l.num_bids|pluralize }}</span>
+    {% if l.is_open %}<span class="time">{{ l.ends_at|timeuntil }} left</span>{% endif %}
+  {% else %}<span class="meta">Buy it now{% if l.is_open and l.quantity > 1 %} · {{ l.quantity }} available{% endif %}</span>{% endif %}
+  <span class="meta">{% if l.delivery_fee %}Delivery KES {{ l.delivery_fee|floatformat:0|intcomma }}{% else %}Free delivery{% endif %}</span>
+  <span class="meta">Seller: <a href="{% url 'seller_profile' l.seller.username %}">{{ l.seller.username }}</a>{% if l.seller_n %} <span class="stars">★</span> {{ l.seller_avg|floatformat:1 }} ({{ l.seller_n }}){% endif %}</span>
+  {% if not l.is_auction and l.is_open and l.seller_id != user.id %}
+  <form method="post" action="{% url 'cart_add' l.pk %}" class="cardadd">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="ghost sm">Add to cart</button></form>
+  {% endif %}
+</article>

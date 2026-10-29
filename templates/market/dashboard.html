@@ -1,0 +1,85 @@
+{% extends "base.html" %}{% load humanize market_extras %}
+{% block title %}Admin dashboard{% endblock %}
+{% block content %}
+{% include "market/_manage_nav.html" with active="dashboard" %}
+<div class="hd">
+  <div><h1 class="stitle">Dashboard</h1><p class="meta" style="margin:4px 0 0">{{ label }} view: {{ span }}. Changes compare with the previous period of the same length.</p></div>
+  <nav class="periods" aria-label="Report period">
+    {% for key, name in periods %}<a href="?period={{ key }}" {% if key == period %}aria-current="true"{% endif %}>{{ name }}</a>{% endfor %}
+  </nav>
+</div>
+
+<section class="tcard payq" id="payments"><h2>Payments awaiting confirmation ({{ pending_payments|length }})</h2>
+  <p class="meta">Check the M-Pesa statement or card dashboard, then confirm. Confirmed payments complete the orders and count as sales.</p>
+  {% if pending_payments %}<div class="tablewrap"><table>
+    <thead><tr><th>Reference</th><th>Customer</th><th>Method</th><th>Amount</th><th>M-Pesa code / transaction</th><th>Status</th><th></th></tr></thead>
+    <tbody>{% for p in pending_payments %}<tr>
+      <td><strong>{{ p.reference }}</strong><br><span class="meta">{{ p.created_at|date:"j M H:i" }}</span></td>
+      <td>{{ p.user.username }}{% if p.phone %}<br><span class="meta">{{ p.phone }}</span>{% endif %}</td>
+      <td>{{ p.get_method_display }}</td>
+      <td>KES {{ p.amount|floatformat:0|intcomma }}</td>
+      <td>{{ p.provider_ref|default:"-" }}{% if p.note %}<br><span class="meta">{{ p.note }}</span>{% endif %}</td>
+      <td><span class="pill {{ p.status }}">{{ p.get_status_display }}</span></td>
+      <td class="acts">
+        {% if p.status == "paid" %}<form method="post" action="{% url 'payment_decision' p.pk 'confirm' %}">{% csrf_token %}<button class="solid sm">Confirm</button></form>
+        {% else %}<form method="post" action="{% url 'payment_decision' p.pk 'confirm' %}" class="manual">{% csrf_token %}<input name="reason" required maxlength="150" placeholder="Why confirm without payment?" aria-label="Reason for confirming by hand"><button class="ghost sm">Confirm by hand</button></form>{% endif %}
+        <form method="post" action="{% url 'payment_decision' p.pk 'reject' %}" onsubmit="return confirm('Reject this payment and return the stock?')">{% csrf_token %}<button class="ghost sm">Reject</button></form>
+      </td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="empty">Nothing waiting. New payments show up here as customers pay.</p>{% endif %}
+</section>
+
+{% if attention_payments %}<section class="tcard payq attn"><h2>Needs attention</h2>
+  <p class="meta">Money may have arrived for payments that were cancelled or failed. Refund the customer or recreate the order.</p>
+  <table><tbody>{% for p in attention_payments %}<tr><td><strong>{{ p.reference }}</strong> {{ p.user.username }}<br><span class="meta">{{ p.note }}</span></td><td class="num">KES {{ p.amount|floatformat:0|intcomma }}</td><td><a href="{% url 'admin:market_payment_change' p.pk %}">Open</a></td></tr>{% endfor %}</tbody></table></section>{% endif %}
+
+<section class="tcard payq{% if email_stats.failed %} attn{% endif %}"><h2>Email delivery, last 24 hours</h2>
+  {% if email_stats.total %}<p class="meta">{{ email_stats.total }} email{{ email_stats.total|pluralize }}:
+    sent {{ email_stats.counts.sent|default:0 }}, waiting {{ email_stats.counts.queued|default:0 }}, failed {{ email_stats.failed }}.</p>
+  {% else %}<p class="meta">No verification or reset emails were requested.</p>{% endif %}
+  {% if email_stats.failed %}<p class="err">Some emails could not be delivered. Customers can't get their codes. Check the EMAIL_* settings and your mail provider.</p>{% endif %}
+  {% if email_stats.problems %}<table><tbody>{% for p in email_stats.problems %}<tr><td>{{ p.kind }} to {{ p.to }}<br><span class="meta">{{ p.error|default:"retrying" }}</span></td><td>{{ p.status }}</td><td class="num">{{ p.when|date:"H:i" }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+
+<div class="kpis">
+  {% for k in kpis %}
+  <div class="kpi">
+    <span class="meta">{{ k.label }}</span>
+    <strong>{% if k.rating %}{% if k.value %}{{ k.value|floatformat:1 }} <span class="stars">★</span>{% else %}-{% endif %}{% elif k.money %}KES {{ k.value|floatformat:0|intcomma }}{% else %}{{ k.value|intcomma }}{% endif %}</strong>
+    {% if k.delta %}<span class="delta {% if k.delta.up %}up{% else %}down{% endif %}">{% if k.delta.up %}▲{% else %}▼{% endif %} {{ k.delta.pct }}%</span>
+    {% elif k.note %}<span class="meta">{{ k.note }}</span>{% else %}<span class="meta">No earlier data</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="charts">
+{% for c in charts %}
+  <section class="chart"><h2>{{ c.title }}</h2>
+    <div class="bars" role="img" aria-label="{{ c.title }} for the {{ span }}">
+      {% for b in c.bars %}<div class="col"><span class="bar" style="height:{{ b.pct }}%" title="{{ b.label }}: {% if c.money %}KES {% endif %}{{ b.value|floatformat:0|intcomma }}"></span><small>{% if b.show %}{{ b.label }}{% endif %}</small></div>{% endfor %}
+    </div>
+  </section>
+{% endfor %}
+</div>
+
+<div class="tables">
+  <section class="tcard"><h2>Top pages</h2>
+    <table><tbody>{% for p in top_pages %}<tr><td class="path">{{ p.path }}</td><td class="num">{{ p.c|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No traffic in this period.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="tcard"><h2>Most viewed listings</h2>
+    <table><tbody>{% for p in top_viewed %}<tr><td><a href="{% url 'listing_detail' p.listing_id %}">{{ p.listing__title }}</a></td><td class="num">{{ p.c|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No listing views yet.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="tcard"><h2>Top vendors by sales</h2>
+    <table><tbody>{% for v in top_vendors %}<tr><td><a href="{% url 'seller_profile' v.seller__username %}">{{ v.seller__username }}</a></td><td>{{ v.n }} sale{{ v.n|pluralize }}</td><td class="num">KES {{ v.rev|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No sales in this period.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="tcard"><h2>Recent transactions</h2>
+    <table><tbody>{% for o in recent_orders %}<tr><td>#{{ o.pk }} {{ o.title|truncatechars:28 }}<br><span class="meta">{{ o.buyer.username }} from {{ o.seller.username }}, {{ o.created_at|date:"j M H:i" }}</span></td><td class="num">KES {{ o.total|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No transactions yet.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="tcard"><h2>Top searches</h2>
+    <table><tbody>{% for s in top_searches %}<tr><td>{{ s.query }}</td><td class="num">{{ s.c|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No searches in this period.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="tcard"><h2>Searches with no results</h2><p class="meta">Items shoppers want that nobody sells yet.</p>
+    <table><tbody>{% for s in no_result_searches %}<tr><td>{{ s.query }}</td><td class="num">{{ s.c|intcomma }}</td></tr>{% empty %}<tr><td class="empty">None. Every search found something.</td></tr>{% endfor %}</tbody></table></section>
+  {% for title, rows, kind in rating_groups %}
+  <section class="tcard"><h2>{{ title }}</h2>
+    <table><tbody>{% for r in rows %}<tr>
+      <td>{% if kind == "vendor" %}<a href="{% url 'seller_profile' r.username %}">{{ r.username }}</a>{% else %}<a href="{{ r.get_absolute_url }}">{{ r.title|truncatechars:30 }}</a>{% endif %}</td>
+      <td><span class="stars">{{ r.avg|stars }}</span></td><td class="num">{{ r.avg|floatformat:1 }} ({{ r.n }})</td></tr>{% empty %}<tr><td class="empty">No ratings yet.</td></tr>{% endfor %}</tbody></table></section>
+  {% endfor %}
+</div>
+<p class="meta" style="margin-top:20px">Full records are in the <a href="{% url 'admin:index' %}">Django admin</a> (orders, reviews and page views).</p>
+{% endblock %}

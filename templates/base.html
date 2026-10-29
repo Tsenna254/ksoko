@@ -1,0 +1,79 @@
+{% load static humanize %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Buy and sell almost anything{% endblock %} | {{ site.site_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/ksoko.css' %}">
+{% block head %}{% endblock %}
+</head>
+<body>
+{% if site.site_background %}<div class="sitebg" style="background-image:url('{{ site.site_background.url }}')"></div><div class="sitebg-veil" style="--ov:{{ site.background_overlay }}%"></div>{% endif %}
+<div class="top"><div class="wrap">
+  <div>
+    {% if user.is_authenticated %}<span>Hi, {{ user.username }}</span>
+    {% else %}<span>Hi! <a href="{% url 'login' %}">Sign in</a> or <a href="{% url 'register' %}">register</a></span>{% endif %}
+    <a href="{% url 'listing_list' %}?type=auction">Auctions</a>
+  </div>
+  <div>
+    <a href="{% url 'sell' %}">Sell</a>
+    {% if user.is_authenticated %}
+      <a href="{% url 'watchlist' %}">Watchlist</a>
+      <a href="{% url 'my_listings' %}">My listings</a>
+      <a href="{% url 'seller_campaigns' %}">Campaigns</a>
+      <a href="{% url 'my_orders' %}">My orders</a>
+      {% if user.is_staff %}<a href="{% url 'dashboard' %}">Dashboard</a>{% endif %}
+      <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="linkbtn">Sign out</button></form>
+    {% endif %}
+  </div>
+</div></div>
+<header>
+  <div class="wrap main">
+    <a class="logo" href="{% url 'home' %}" aria-label="{{ site.site_name }} home">{% if site.logo %}<img class="logoimg" src="{{ site.logo.url }}" alt="{{ site.site_name }}">{% else %}ksoko<i></i>{% endif %}</a>
+    <form class="sbox" action="{% url 'listing_list' %}" method="get" role="search">
+      <select name="category" aria-label="Category">
+        <option value="">All categories</option>
+        {% for c in nav_categories %}<option value="{{ c.slug }}">{{ c.name }}</option>{% endfor %}
+      </select>
+      <input name="q" type="search" placeholder="Search for anything" aria-label="Search" value="{{ request.GET.q }}">
+      <button>Search</button>
+    </form>
+    {% if user.is_authenticated %}
+    <details class="cartmenu" id="cartmenu">
+      <summary aria-label="Cart, {{ cart_count }} item{{ cart_count|pluralize }}">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.5 11h10L20 7H6"/><circle cx="9" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/></svg>
+        <span>Cart</span><b>{{ cart_count }}</b>
+      </summary>
+      <div class="cartpanel">
+        {% if mini_cart.lines or mini_cart.unpaid %}
+          <ul>
+            {% for l in mini_cart.lines|slice:":4" %}<li><span>{{ l.listing.title|truncatechars:28 }} × {{ l.qty }}</span><strong>KES {{ l.line|floatformat:0|intcomma }}</strong></li>{% endfor %}
+            {% for o in mini_cart.unpaid %}<li><span>Won: {{ o.title|truncatechars:24 }}</span><strong>KES {{ o.total|floatformat:0|intcomma }}</strong></li>{% endfor %}
+          </ul>
+          <div class="ctot"><span>Total</span><strong>KES {{ mini_cart.total|floatformat:0|intcomma }}</strong></div>
+          <div class="cbtns"><a class="solid" href="{% url 'checkout' %}">Checkout</a><a class="ghost" href="{% url 'cart' %}">View cart</a></div>
+        {% else %}<p class="empty">Your cart is empty.</p>{% endif %}
+      </div>
+    </details>
+    {% else %}<a class="cartlink" href="{% url 'login' %}?next={% url 'cart' %}">Cart</a>{% endif %}
+    <a class="sellbtn" href="{% url 'sell' %}">Sell an item</a>
+  </div>
+  <nav class="cats"><div class="wrap">
+    {% for c in nav_categories %}<a href="{% url 'listing_list' %}?category={{ c.slug }}">{{ c.name }}</a>{% endfor %}
+    <a class="sale" href="{% url 'listing_list' %}?type=auction">Auctions</a>
+  </div></nav>
+</header>
+
+{% if messages %}<div class="wrap msgs">{% for m in messages %}<p class="msg {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}</div>{% endif %}
+<main class="wrap">{% block content %}{% endblock %}</main>
+
+<footer><div class="wrap">
+  <a class="logo" href="{% url 'home' %}">{% if site.logo %}<img class="logoimg" src="{{ site.logo.url }}" alt="{{ site.site_name }}">{% else %}ksoko<i></i>{% endif %}</a>
+  <p>The online market for people who love a good find. Prices are in Kenyan shillings (KES).</p>
+</div></footer>
+<script>document.addEventListener("click",function(e){var d=document.getElementById("cartmenu");if(d&&d.open&&!d.contains(e.target))d.open=false});</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

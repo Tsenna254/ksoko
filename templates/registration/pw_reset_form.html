@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Reset your password{% endblock %}
+{% block content %}
+<div class="formcard narrow">
+  <h1>Reset your password</h1>
+  <p>Enter the email address you registered with and we'll send you a link to choose a new password.</p>
+  <form method="post">{% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="fld"><label for="id_email">Email address</label>
+      <input type="email" name="email" id="id_email" autocomplete="email" maxlength="254" required autofocus value="{{ form.email.value|default:'' }}">
+      {{ form.email.errors }}</div>
+    <button class="solid">Send reset link</button>
+    <a class="ghost" href="{% url 'login' %}">Back to sign in</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Create account{% endblock %}
+{% block content %}
+<div class="formcard narrow">
+  <h1>Create your account</h1>
+  <p class="meta">We'll email you a 6-digit code to confirm your address before your account is ready.</p>
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    {{ form.non_field_errors }}
+    {% for field in form %}<div class="fld">{{ field.label_tag }}{{ field }}{% if field.help_text %}<small>{{ field.help_text|safe }}</small>{% endif %}{{ field.errors }}</div>{% endfor %}
+    <button class="solid">Create account</button>
+  </form>
+  <p>Already registered? <a href="{% url 'login' %}">Sign in</a></p>
+</div>
+{% endblock %}

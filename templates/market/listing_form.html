@@ -1,0 +1,173 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}{% if listing %}Edit listing{% else %}Sell an item{% endif %}{% endblock %}
+{% block content %}
+<div class="sellpage">
+<div>
+<h1 class="stitle">{% if listing %}Edit your listing{% else %}Sell an item{% endif %}</h1>
+<p class="lead">{% if listing %}Update the details or photos. Changes show straight away.{% else %}Add photos and a few details. Your listing goes live as soon as you submit it.{% endif %}</p>
+
+<form id="sell-form" method="post" enctype="multipart/form-data" novalidate>
+{% csrf_token %}
+{% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors }}</div>{% endif %}
+
+<section class="scard">
+  <h2>Photos</h2><p class="sub">Add up to {{ max_images }} photos. The first one is the cover. JPG, PNG or WebP, {{ max_mb }} MB each.</p>
+  {% if listing %}<div class="photos" id="current">
+    {% for img in listing.images.all %}<label class="ph cur"><img src="{{ img.image.url }}" alt="Current photo {{ forloop.counter }}"><span class="mk"><input type="checkbox" name="delete_images" value="{{ img.pk }}"> Remove</span></label>{% endfor %}
+  </div>{% endif %}
+  <div class="drop" id="drop">
+    <strong>Drag photos here</strong><p>or choose them from your device</p>
+    <label class="pick" for="id_images">Choose photos</label>
+    {{ form.images }}
+  </div>
+  <div class="photos" id="photos"></div>
+  <div class="err" id="e-photos" role="alert">{{ form.images.errors }}{{ form.delete_images.errors }}</div>
+</section>
+
+<section class="scard">
+  <h2>Details</h2><p class="sub">A clear title and honest condition help your item sell faster.</p>
+  <div class="fld"><label for="id_title">Title</label>{{ form.title }}
+    <div class="help"><div class="err" id="e-title" role="alert">{{ form.title.errors }}</div><span id="tc">0/120</span></div></div>
+  <div class="row2">
+    <div class="fld"><label for="id_category">Category</label>{{ form.category }}<div class="err" id="e-category" role="alert">{{ form.category.errors }}</div></div>
+    <div class="fld"><label for="id_condition">Condition</label>{{ form.condition }}<div class="err" id="e-condition" role="alert">{{ form.condition.errors }}</div></div>
+  </div>
+  <div class="fld"><label for="id_description">Description</label>{{ form.description }}
+    <div class="help"><div class="err" id="e-description" role="alert">{{ form.description.errors }}</div><span id="dc">0/4000</span></div></div>
+</section>
+
+<section class="scard">
+  <h2>Format and price</h2><p class="sub">{% if listing %}The format can’t be changed after listing.{% else %}Sell at a fixed price or let buyers bid.{% endif %}</p>
+  <div class="fld"><span class="lbl" id="fl">Format</span>
+    <div class="seg" role="radiogroup" aria-labelledby="fl">
+      {% for value, label in form.listing_type.field.choices %}
+      <div><input type="radio" name="listing_type" id="t-{{ value }}" value="{{ value }}" {% if form.listing_type.value == value %}checked{% endif %} {% if form.listing_type.field.disabled %}disabled{% endif %}>
+        <label for="t-{{ value }}">{{ label }}<small>{% if value == "buy" %}You set the price{% else %}Buyers bid up the price{% endif %}</small></label></div>
+      {% endfor %}
+    </div>
+    <div class="err" role="alert">{{ form.listing_type.errors }}</div>
+  </div>
+  <div class="row2">
+    <div class="fld"><label for="id_price" id="pl">Price</label><div class="pre"><span>KES</span>{{ form.price }}</div><div class="err" id="e-price" role="alert">{{ form.price.errors }}</div></div>
+    <div class="fld" id="origw"><label for="id_original_price">Original price (optional)</label><div class="pre"><span>KES</span>{{ form.original_price }}</div><div class="err" id="e-original_price" role="alert">{{ form.original_price.errors }}</div></div>
+    <div class="fld" id="qtyw"><label for="id_quantity">Quantity available</label>{{ form.quantity }}<div class="err" id="e-quantity" role="alert">{{ form.quantity.errors }}</div></div>
+    {% if not listing %}<div class="fld" id="durw" hidden><label for="id_duration">Auction length</label>{{ form.duration }}<div class="err" role="alert">{{ form.duration.errors }}</div></div>
+    {% elif listing.is_auction %}<div class="fld"><span class="lbl">Auction ends</span><p class="static">{{ listing.ends_at|date:"j M Y, H:i" }}</p></div>{% endif %}
+  </div>
+  {% if listing and form.price.field.disabled %}<p class="help">The price is locked because this listing has bids or is in a running campaign.</p>{% endif %}
+</section>
+
+<section class="scard">
+  <h2>Delivery</h2><p class="sub">Buyers see this before they pay.</p>
+  <div class="fld"><label class="chk">{{ form.free_delivery }} Offer free delivery</label></div>
+  <div class="fld" id="feew"><label for="id_delivery_fee">Delivery fee</label><div class="pre"><span>KES</span>{{ form.delivery_fee }}</div><div class="err" id="e-delivery_fee" role="alert">{{ form.delivery_fee.errors }}</div></div>
+</section>
+
+<div class="actions">
+  <button class="solid" type="submit">{% if listing %}Save changes{% else %}List item{% endif %}</button>
+  <a class="ghost" href="{% if listing %}{{ listing.get_absolute_url }}{% else %}{% url 'home' %}{% endif %}">Cancel</a>
+</div>
+</form>
+</div>
+
+<aside class="saside" aria-label="Listing preview and tips">
+  <div class="pv"><div class="lab">Preview</div>
+    <div class="pimg" id="pimg">Your cover photo will appear here</div>
+    <h3 id="pt">Your title</h3>
+    <span class="pm" id="pc"></span>
+    <span class="pp" id="pp">KES 0</span>
+    <span class="off" id="po" hidden></span>
+    <span class="pm" id="pk"></span>
+    <span class="pm" id="pd"></span>
+  </div>
+  <div class="tips"><h3>Tips for a quick sale</h3>
+    <ul><li>Shoot in daylight against a plain background.</li><li>Show every side, plus any scratches or marks.</li><li>Put the brand and model in the title.</li><li>Start auctions low to attract more bids.</li></ul></div>
+</aside>
+</div>
+{% endblock %}
+
+{% block scripts %}<script>
+(function(){
+  var MAX={{ max_images }},MAXMB={{ max_mb }},OK=["image/jpeg","image/png","image/webp"],photos=[];
+  function $(i){return document.getElementById(i)}
+  var input=$("id_images");
+  function kes(n){return "KES "+Math.round(n).toLocaleString("en-US")}
+  function keptCount(){var n=0;document.querySelectorAll("input[name=delete_images]").forEach(function(c){if(!c.checked)n++});return n}
+  function setErr(n,msg){var e=$("e-"+n),f=$("id_"+n);if(e)e.textContent=msg||"";if(f)f.classList.toggle("bad",!!msg)}
+  function isAuc(){var r=document.querySelector("input[name=listing_type]:checked");return !!r&&r.value==="auction"}
+  function sync(){var dt=new DataTransfer();photos.forEach(function(p){dt.items.add(p.f)});input.files=dt.files}
+
+  function addFiles(list){
+    var msg="";
+    Array.prototype.forEach.call(list,function(f){
+      if(OK.indexOf(f.type)<0){msg=f.name+" isn’t a JPG, PNG or WebP image.";return}
+      if(f.size>MAXMB*1048576){msg=f.name+" is larger than "+MAXMB+" MB.";return}
+      if(photos.length+keptCount()>=MAX){msg="You can have up to "+MAX+" photos.";return}
+      photos.push({f:f,url:URL.createObjectURL(f)});
+    });
+    setErr("photos",msg);draw();sync();preview();
+  }
+  function draw(){
+    $("photos").innerHTML=photos.map(function(p,i){
+      var first=i===0&&keptCount()===0;
+      return '<div class="ph'+(first?' cover':'')+'"><img src="'+p.url+'" alt="New photo '+(i+1)+'">'+(first?'<b>Cover</b>':(keptCount()===0?'<button type="button" class="mk" data-mk="'+i+'">Make cover</button>':''))+'<button type="button" class="x" data-rm="'+i+'" aria-label="Remove new photo '+(i+1)+'">×</button></div>'}).join("");
+  }
+  input.addEventListener("change",function(){addFiles(Array.prototype.slice.call(input.files))});
+  var dz=$("drop");
+  ["dragenter","dragover"].forEach(function(n){dz.addEventListener(n,function(e){e.preventDefault();dz.classList.add("over")})});
+  ["dragleave","drop"].forEach(function(n){dz.addEventListener(n,function(e){e.preventDefault();dz.classList.remove("over")})});
+  dz.addEventListener("drop",function(e){addFiles(e.dataTransfer.files)});
+  $("photos").addEventListener("click",function(e){
+    var r=e.target.closest("[data-rm]"),m=e.target.closest("[data-mk]");
+    if(r){var p=photos.splice(+r.dataset.rm,1)[0];URL.revokeObjectURL(p.url)}
+    if(m){photos.unshift(photos.splice(+m.dataset.mk,1)[0])}
+    if(r||m){setErr("photos","");draw();sync();preview()}
+  });
+  document.querySelectorAll("input[name=delete_images]").forEach(function(c){c.addEventListener("change",function(){draw();preview()})});
+
+  function preview(){
+    var price=+$("id_price").value||0,orig=$("id_original_price")?+$("id_original_price").value||0:0,auc=isAuc();
+    var keep=document.querySelector("#current .ph:not(:has(input:checked)) img");
+    var src=photos.length?photos[0].url:(keep?keep.src:"");
+    $("pimg").innerHTML=src?'<img src="'+src+'" alt="Cover photo preview">':"Your cover photo will appear here";
+    $("pt").textContent=$("id_title").value.trim()||"Your title";
+    var c=$("id_condition");$("pc").textContent=c.options[c.selectedIndex].text;
+    var off=!auc&&orig>price&&price>0?Math.round((1-price/orig)*100):0;
+    $("pp").innerHTML=kes(price)+(off?"<s>"+kes(orig)+"</s>":"");
+    $("po").hidden=!off;$("po").textContent=off+"% off";
+    var d=$("id_duration");
+    $("pk").textContent=auc?"Auction"+(d?", ends in "+d.options[d.selectedIndex].text:""):"Buy it now";
+    $("pd").textContent=$("id_free_delivery").checked?"Free delivery":($("id_delivery_fee").value>0?"Delivery "+kes(+$("id_delivery_fee").value):"Delivery fee to be set");
+    $("tc").textContent=$("id_title").value.length+"/120";$("dc").textContent=$("id_description").value.length+"/4000";
+  }
+  function syncType(){
+    var a=isAuc();
+    $("origw").hidden=a;$("qtyw").hidden=a;if($("durw"))$("durw").hidden=!a;
+    $("pl").textContent=a?"Starting bid":"Price";
+    preview();
+  }
+  $("feew").hidden=$("id_free_delivery").checked;
+  $("id_free_delivery").addEventListener("change",function(){
+    $("feew").hidden=this.checked;
+    if(!this.checked&&!(+$("id_delivery_fee").value>0))$("id_delivery_fee").value="";
+    preview();
+  });
+  document.querySelectorAll("input[name=listing_type]").forEach(function(r){r.addEventListener("change",syncType)});
+  ["id_title","id_category","id_condition","id_description","id_price","id_original_price","id_delivery_fee","id_duration"].forEach(function(i){var el=$(i);if(el)el.addEventListener("input",preview)});
+
+  $("sell-form").addEventListener("submit",function(e){
+    var ok=true,first=null;
+    function bad(n,msg){setErr(n,msg);if(msg){ok=false;if(!first)first=n}}
+    bad("photos",(photos.length+keptCount())?"":"Add at least one photo.");
+    bad("title",$("id_title").value.trim().length>=5?"":"Enter a title of at least 5 characters.");
+    bad("category",$("id_category").value?"":"Choose a category.");
+    bad("description",$("id_description").value.trim().length>=20?"":"Describe your item in at least 20 characters.");
+    var price=+$("id_price").value,orig=+$("id_original_price").value;
+    bad("price",price>0?"":(isAuc()?"Enter a starting bid.":"Enter a price."));
+    bad("original_price",(!isAuc()&&orig&&orig<=price)?"The original price must be higher than your price.":"");
+    bad("delivery_fee",(!$("id_free_delivery").checked&&!(+$("id_delivery_fee").value>0))?"Enter a delivery fee, or choose free delivery.":"");
+    if(!ok){e.preventDefault();var el=first==="photos"?$("drop"):$("id_"+first);el.scrollIntoView({block:"center"});if(first!=="photos")el.focus()}
+  });
+  syncType();
+})();
+</script>{% endblock %}
