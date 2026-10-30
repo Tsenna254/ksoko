@@ -51,6 +51,7 @@
     <div class="fld"><label for="id_price" id="pl">Price</label><div class="pre"><span>KES</span>{{ form.price }}</div><div class="err" id="e-price" role="alert">{{ form.price.errors }}</div></div>
     <div class="fld" id="origw"><label for="id_original_price">Original price (optional)</label><div class="pre"><span>KES</span>{{ form.original_price }}</div><div class="err" id="e-original_price" role="alert">{{ form.original_price.errors }}</div></div>
     <div class="fld" id="qtyw"><label for="id_quantity">Quantity available</label>{{ form.quantity }}<div class="err" id="e-quantity" role="alert">{{ form.quantity.errors }}</div></div>
+    <div class="fld" id="codw"><label class="chk">{{ form.allow_cod }} Offer Pay on Delivery</label><small>{{ form.allow_cod.help_text }}</small><div class="codfee" id="codfee" hidden></div>{{ form.allow_cod.errors }}</div>
     {% if not listing %}<div class="fld" id="durw" hidden><label for="id_duration">Auction length</label>{{ form.duration }}<div class="err" role="alert">{{ form.duration.errors }}</div></div>
     {% elif listing.is_auction %}<div class="fld"><span class="lbl">Auction ends</span><p class="static">{{ listing.ends_at|date:"j M Y, H:i" }}</p></div>{% endif %}
   </div>
@@ -88,7 +89,7 @@
 
 {% block scripts %}<script>
 (function(){
-  var MAX={{ max_images }},MAXMB={{ max_mb }},OK=["image/jpeg","image/png","image/webp"],photos=[];
+  var PCT={{ cod_percent|floatformat:"-2" }},MAX={{ max_images }},MAXMB={{ max_mb }},OK=["image/jpeg","image/png","image/webp"],photos=[];
   function $(i){return document.getElementById(i)}
   var input=$("id_images");
   function kes(n){return "KES "+Math.round(n).toLocaleString("en-US")}
@@ -139,10 +140,13 @@
     $("pk").textContent=auc?"Auction"+(d?", ends in "+d.options[d.selectedIndex].text:""):"Buy it now";
     $("pd").textContent=$("id_free_delivery").checked?"Free delivery":($("id_delivery_fee").value>0?"Delivery "+kes(+$("id_delivery_fee").value):"Delivery fee to be set");
     $("tc").textContent=$("id_title").value.length+"/120";$("dc").textContent=$("id_description").value.length+"/4000";
+    var qty=+$("id_quantity").value||1,cod=$("id_allow_cod").checked&&!auc,cf=$("codfee");
+    cf.hidden=!cod;
+    if(cod)cf.textContent="One-time fee: KES "+Math.round(price*qty*PCT/100).toLocaleString("en-US")+" ("+PCT+"% of KES "+(price*qty).toLocaleString("en-US")+"). You'll pay it right after listing.";
   }
   function syncType(){
     var a=isAuc();
-    $("origw").hidden=a;$("qtyw").hidden=a;if($("durw"))$("durw").hidden=!a;
+    $("origw").hidden=a;$("qtyw").hidden=a;$("codw").hidden=a;if($("durw"))$("durw").hidden=!a;
     $("pl").textContent=a?"Starting bid":"Price";
     preview();
   }
@@ -153,7 +157,7 @@
     preview();
   });
   document.querySelectorAll("input[name=listing_type]").forEach(function(r){r.addEventListener("change",syncType)});
-  ["id_title","id_category","id_condition","id_description","id_price","id_original_price","id_delivery_fee","id_duration"].forEach(function(i){var el=$(i);if(el)el.addEventListener("input",preview)});
+  ["id_title","id_category","id_condition","id_description","id_price","id_original_price","id_delivery_fee","id_duration","id_quantity","id_allow_cod"].forEach(function(i){var el=$(i);if(el)el.addEventListener("input",preview)});
 
   $("sell-form").addEventListener("submit",function(e){
     var ok=true,first=null;

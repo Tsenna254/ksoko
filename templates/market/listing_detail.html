@@ -21,6 +21,7 @@
     </p>
     <p class="pr lg">KES {{ listing.price|floatformat:0|intcomma }}{% if listing.original_price %}<s>KES {{ listing.original_price|floatformat:0|intcomma }}</s>{% endif %}</p>
     {% if listing.discount_percent %}<p class="off">{{ listing.discount_percent }}% off</p>{% endif %}
+    {% if listing.cod_active %}<p class="meta cod">Pay on Delivery available: pay cash when it arrives.</p>{% endif %}
 
     {% if not listing.is_open %}
       <p class="msg info">This listing is {{ listing.get_status_display|lower }}.</p>

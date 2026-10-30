@@ -16,6 +16,7 @@
     {% if l.is_open %}<span class="time">{{ l.ends_at|timeuntil }} left</span>{% endif %}
   {% else %}<span class="meta">Buy it now{% if l.is_open and l.quantity > 1 %} · {{ l.quantity }} available{% endif %}</span>{% endif %}
   <span class="meta">{% if l.delivery_fee %}Delivery KES {{ l.delivery_fee|floatformat:0|intcomma }}{% else %}Free delivery{% endif %}</span>
+  {% if l.cod_active %}<span class="meta cod">Pay on Delivery</span>{% endif %}
   <span class="meta">Seller: <a href="{% url 'seller_profile' l.seller.username %}">{{ l.seller.username }}</a>{% if l.seller_n %} <span class="stars">★</span> {{ l.seller_avg|floatformat:1 }} ({{ l.seller_n }}){% endif %}</span>
   {% if not l.is_auction and l.is_open and l.seller_id != user.id %}
   <form method="post" action="{% url 'cart_add' l.pk %}" class="cardadd">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="ghost sm">Add to cart</button></form>

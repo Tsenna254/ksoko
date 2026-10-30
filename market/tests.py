@@ -65,3 +65,78 @@ class EmailQueueTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post(reverse("password_reset"), {"email": "amina@example.com"})
         self.assertTrue(OutboundEmail.objects.filter(kind="password_reset", to_email="amina@example.com").exists())
+
+
+class PayOnDeliveryTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+        from market import cod
+        from market.models import Category, Listing
+        self.cod, self.D = cod, Decimal
+        User = get_user_model()
+        self.seller = User.objects.create_user("seller", "seller@example.com", "a-long-test-password-1")
+        self.buyer = User.objects.create_user("buyer", "buyer@example.com", "a-long-test-password-1")
+        self.staff = User.objects.create_user("boss", "boss@example.com", "a-long-test-password-1", is_staff=True)
+        self.cat = Category.objects.create(name="Phones")
+        self.item = Listing.objects.create(
+            seller=self.seller, category=self.cat, title="Phone", description="A good phone, barely used." * 2,
+            price=Decimal("10000"), quantity=3, allow_cod=True)
+
+    def pay_fee(self, listing):
+        from market.models import Payment
+        fee = self.cod.sync_cod_fee(listing)
+        payment = Payment.objects.create(user=listing.seller, purpose="listing_fee", method="mpesa", amount=fee.amount)
+        fee.payment = payment
+        fee.save()
+        payment.mark_paid(f"QGH7ABC{payment.pk}")
+        payment.confirm(self.staff)
+
+    def fresh(self, listing):
+        from market.models import Listing
+        return Listing.objects.get(pk=listing.pk)
+
+    def test_fee_is_ten_percent_of_price_times_quantity(self):
+        fee = self.cod.sync_cod_fee(self.item)
+        self.assertEqual(fee.amount, self.D("3000"))             # 10% of 10,000 x 3
+        self.assertFalse(self.fresh(self.item).cod_active)       # not on until the fee is confirmed
+
+    def test_pay_on_delivery_switches_on_after_the_fee_is_confirmed(self):
+        self.pay_fee(self.item)
+        self.assertTrue(self.fresh(self.item).cod_active)
+
+    def test_raising_the_price_needs_a_top_up_fee(self):
+        self.pay_fee(self.item)
+        self.item.price = self.D("12000")
+        self.item.save()
+        top_up = self.cod.sync_cod_fee(self.item)
+        self.assertEqual(top_up.amount, self.D("600"))           # 10% of the extra 6,000
+        self.assertFalse(self.fresh(self.item).cod_active)
+
+    def test_cod_checkout_splits_by_seller_and_delivery_completes_after_staff_confirm(self):
+        from market.models import CartItem, Category, Listing, Order, Payment
+        from market.payments import create_payments
+        other = get_user_model().objects.create_user("seller2", "s2@example.com", "a-long-test-password-1")
+        second = Listing.objects.create(seller=other, category=self.cat, title="Case", description="A sturdy phone case." * 3,
+                                        price=self.D("1000"), quantity=1, allow_cod=True)
+        self.pay_fee(self.item)
+        self.pay_fee(second)
+        CartItem.objects.create(user=self.buyer, listing=self.fresh(self.item), quantity=1)
+        CartItem.objects.create(user=self.buyer, listing=self.fresh(second), quantity=1)
+        payments = create_payments(self.buyer, "cod", "", "254712345678", "Westlands, Nairobi, house 5")
+        self.assertEqual(len(payments), 2)                       # one payment per seller
+        self.assertTrue(all(p.status == Payment.Status.COD_PENDING for p in payments))
+        self.assertEqual(self.fresh(self.item).quantity, 2)      # stock reserved
+        payment = payments[0]
+        self.assertTrue(payment.mark_cod_delivered())            # seller: delivered, cash collected
+        self.assertTrue(payment.confirm(self.staff))             # staff confirm
+        self.assertEqual(payment.orders.first().status, Order.Status.COMPLETED)
+
+    def test_repeated_failed_deliveries_switch_pay_on_delivery_off(self):
+        from market.cart import cart_summary
+        from market.models import CartItem, Payment
+        from market.payments import cod_blocker
+        self.pay_fee(self.item)
+        for _ in range(2):
+            Payment.objects.create(user=self.buyer, method="cod", status="rejected", amount=self.D("500"))
+        CartItem.objects.create(user=self.buyer, listing=self.fresh(self.item), quantity=1)
+        self.assertIn("switched off", cod_blocker(self.buyer, cart_summary(self.buyer)))

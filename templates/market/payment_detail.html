@@ -3,7 +3,7 @@
 {% block head %}{% if payment.status == "awaiting" and payment.mpesa_checkout_id %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
 {% block content %}
 <div class="formcard">
-  <h1>Payment {{ payment.reference }}</h1>
+  <h1>{% if payment.purpose == "listing_fee" %}Listing fee{% else %}Payment{% endif %} {{ payment.reference }}</h1>
   <p><span class="pill {{ payment.status }}">{{ payment.get_status_display }}</span> &nbsp; <strong>KES {{ payment.amount|floatformat:0|intcomma }}</strong> by {{ payment.get_method_display }}</p>
 
   {% if payment.status == "awaiting" %}
@@ -39,18 +39,31 @@
     <div class="testbox"><strong>Test mode</strong><p class="meta">No money moves. This button pretends the customer paid so you can try the confirm step in the dashboard.</p>
       <form method="post" action="{% url 'payment_test' payment.reference %}">{% csrf_token %}<button class="ghost sm">Simulate a successful payment</button></form></div>
     {% endif %}
-    <form method="post" action="{% url 'payment_cancel' payment.reference %}" style="margin-top:14px" onsubmit="return confirm('Cancel this payment and return the items to stock?')">{% csrf_token %}<button class="linkbtn">Cancel this payment</button></form>
+    <form method="post" action="{% url 'payment_cancel' payment.reference %}" style="margin-top:14px" onsubmit="return confirm('Cancel this payment?')">{% csrf_token %}<button class="linkbtn">Cancel this payment</button></form>
 
+  {% elif payment.status == "cod_pending" %}
+    <p class="msg success">Pay on Delivery. Pay <strong>KES {{ payment.amount|floatformat:0|intcomma }}</strong> in cash when your order arrives. The seller will call <strong>{{ payment.delivery_phone }}</strong> to arrange delivery.</p>
+    <p class="meta">Deliver to: {{ payment.delivery_address }}</p>
+    {% if payment.note %}<p class="meta">{{ payment.note }}</p>{% endif %}
+    {% if cod_cancel_ok %}
+    <form method="post" action="{% url 'payment_cancel' payment.reference %}" style="margin-top:10px" onsubmit="return confirm('Cancel this order?')">{% csrf_token %}<button class="linkbtn">Cancel this order</button></form>
+    <p class="meta">You can cancel within {{ cod_cancel_minutes }} minutes of ordering.</p>
+    {% endif %}
   {% elif payment.status == "paid" %}
-    <p class="msg success">We’ve received your payment details{% if payment.provider_ref %} (<strong>{{ payment.provider_ref }}</strong>){% endif %}. Our team will confirm it shortly, then your order is complete.</p>
+    <p class="msg success">{% if payment.method == "cod" %}The seller marked your order as delivered. Our team will confirm it shortly.{% else %}We’ve received your payment details{% if payment.provider_ref %} (<strong>{{ payment.provider_ref }}</strong>){% endif %}. Our team will confirm it shortly{% if payment.purpose == "listing_fee" %}, then Pay on Delivery switches on for your item{% else %}, then your order is complete{% endif %}.{% endif %}</p>
   {% elif payment.status == "confirmed" %}
-    <p class="msg success">Payment confirmed. Your order is complete. <a href="{% url 'my_orders' %}">View my orders</a> and rate your purchase.</p>
+    <p class="msg success">{% if payment.purpose == "listing_fee" %}Listing fee confirmed. Pay on Delivery is now on for your item. <a href="{% url 'my_listings' %}">My listings</a>{% else %}Payment confirmed. Your order is complete. <a href="{% url 'my_orders' %}">View my orders</a> and rate your purchase.{% endif %}</p>
   {% else %}
-    <p class="msg error">This payment was {{ payment.get_status_display|lower }}.{% if payment.note %} {{ payment.note }}.{% endif %} Any items were returned to stock.</p>
-    <a class="ghost" href="{% url 'listing_list' %}">Keep shopping</a>
+    <p class="msg error">This payment was {{ payment.get_status_display|lower }}.{% if payment.note %} {{ payment.note }}.{% endif %}{% if payment.purpose == "order" %} Any items were returned to stock.{% endif %}</p>
+    <a class="ghost" href="{% if payment.purpose == 'listing_fee' %}{% url 'my_listings' %}{% else %}{% url 'listing_list' %}{% endif %}">{% if payment.purpose == "listing_fee" %}Back to my listings{% else %}Keep shopping{% endif %}</a>
   {% endif %}
 
+  {% if fees %}
+  <h2 style="margin-top:22px">What this pays for</h2>
+  <ul class="slist">{% for f in fees %}<li><span>Pay on Delivery fee for “{{ f.listing.title|truncatechars:40 }}” ({{ f.percent|floatformat:"-2" }}% of KES {{ f.covers_value|floatformat:0|intcomma }})</span><strong>KES {{ f.amount|floatformat:0|intcomma }}</strong></li>{% endfor %}</ul>
+  {% else %}
   <h2 style="margin-top:22px">Items in this payment</h2>
   <ul class="slist">{% for o in orders %}<li><span>{{ o.title }}{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}</span><strong>KES {{ o.total|floatformat:0|intcomma }}</strong></li>{% endfor %}</ul>
+  {% endif %}
 </div>
 {% endblock %}

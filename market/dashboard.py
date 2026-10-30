@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from . import audit
 from .security import mask_email
-from .models import Listing, OutboundEmail, Order, PageView, Payment, Review, SearchEvent
+from .models import Listing, ListingFee, OutboundEmail, Order, PageView, Payment, Review, SearchEvent
 
 # key: (label, truncation function, window description)
 PERIODS = {
@@ -88,6 +88,9 @@ def dashboard(request):
     revenue, revenue_p = o["rev"] or 0, op["rev"] or 0
     aov = revenue / o["n"] if o["n"] else 0
     aov_p = revenue_p / op["n"] if op["n"] else 0
+    paid_fees = ListingFee.objects.filter(status=ListingFee.Status.PAID)
+    fees = span_qs(paid_fees, "paid_at").aggregate(t=Sum("amount"))["t"] or 0
+    fees_p = span_qs(paid_fees, "paid_at", True).aggregate(t=Sum("amount"))["t"] or 0
     new_listings, new_listings_p = span_qs(Listing, "created_at").count(), span_qs(Listing, "created_at", True).count()
     new_users, new_users_p = span_qs(User, "date_joined").count(), span_qs(User, "date_joined", True).count()
     ratings = Review.objects.aggregate(product=Avg("product_rating"), seller=Avg("seller_rating"), n=Count("id"))
@@ -95,6 +98,7 @@ def dashboard(request):
     kpis = [
         {"label": "Sales", "value": revenue, "money": True, "delta": _delta(revenue, revenue_p)},
         {"label": "Transactions", "value": o["n"], "delta": _delta(o["n"], op["n"])},
+        {"label": "Pay on Delivery fees", "value": fees, "money": True, "delta": _delta(fees, fees_p)},
         {"label": "Average order", "value": aov, "money": True, "delta": _delta(aov, aov_p)},
         {"label": "Page views", "value": views.count(), "delta": _delta(views.count(), views_p.count())},
         {"label": "Unique visitors", "value": visitors, "delta": _delta(visitors, visitors_p)},
@@ -133,7 +137,7 @@ def dashboard(request):
         "top_vendors": orders.values("seller__username").annotate(rev=Sum("total"), n=Count("id")).order_by("-rev")[:5],
         "recent_orders": done.select_related("buyer", "seller")[:8],
         "pending_payments": sorted(
-            Payment.objects.filter(status__in=[Payment.Status.PAID, Payment.Status.AWAITING]).select_related("user"),
+            Payment.objects.filter(status__in=[Payment.Status.PAID, Payment.Status.AWAITING, Payment.Status.COD_PENDING]).select_related("user"),
             key=lambda p: (p.status != Payment.Status.PAID, -p.created_at.timestamp()),
         ),
         "rating_groups": [

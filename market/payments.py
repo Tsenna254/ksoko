@@ -2,6 +2,7 @@ import hmac
 import json
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.db import IntegrityError, transaction
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -27,17 +29,39 @@ class CheckoutError(Exception):
     pass
 
 
-@transaction.atomic
-def create_payment(user, method, phone):
-    """Turn the cart (and any won auctions) into pending orders under one Payment.
+def cod_blocker(user, cart):
+    """Why this cart can't be paid on delivery, or "" when it can."""
+    if cart["unpaid"]:
+        return "Won auctions must be paid now, so Pay on Delivery isn't available for this order."
+    if not cart["lines"]:
+        return "There's nothing in your cart to pay on delivery."
+    missing = [l["listing"].title for l in cart["lines"] if not l["listing"].cod_active]
+    if missing:
+        return "Pay on Delivery isn't offered for: " + ", ".join(missing[:3]) + ("..." if len(missing) > 3 else "") + "."
+    if cart["total"] > settings.COD_MAX_ORDER_KES:
+        return f"Pay on Delivery is limited to KES {settings.COD_MAX_ORDER_KES:,} per order."
+    failed = Payment.objects.filter(user=user, method=Payment.Method.COD, status=Payment.Status.REJECTED).count()
+    if failed >= settings.COD_MAX_FAILED:
+        return "Pay on Delivery is switched off for your account after repeated failed deliveries."
+    return ""
 
-    Stock is reserved straight away. It is returned if the payment fails or is rejected.
+
+@transaction.atomic
+def create_payments(user, method, phone, delivery_phone, delivery_address):
+    """Turn the cart (and any won auctions) into pending orders and their payment(s).
+
+    Stock is reserved straight away and returned if the payment fails, is rejected or expires.
+    Online methods make one payment. Pay on Delivery makes one per seller, because each seller
+    delivers and collects cash for their own items.
     """
+    is_cod = method == Payment.Method.COD
     items = list(CartItem.objects.filter(user=user))
     locked = {l.pk: l for l in Listing.objects.select_for_update().filter(pk__in=[i.listing_id for i in items])}
     unpaid = list(Order.objects.select_for_update().filter(buyer=user, status=Order.Status.UNPAID, payment__isnull=True))
     if not items and not unpaid:
         raise CheckoutError("Your cart is empty.")
+    if is_cod and unpaid:
+        raise CheckoutError("Won auctions must be paid now, so they can't go on a Pay on Delivery order.")
 
     orders = []
     for item in items:
@@ -45,6 +69,8 @@ def create_payment(user, method, phone):
         if (listing.listing_type != Listing.Type.BUY or not listing.is_open
                 or listing.quantity < item.quantity or listing.seller_id == user.id):
             raise CheckoutError(f"“{listing.title}” is no longer available in that quantity. Update your cart and try again.")
+        if is_cod and not listing.cod_active:
+            raise CheckoutError(f"“{listing.title}” no longer offers Pay on Delivery.")
         orders.append(Order(
             listing=listing, buyer=user, seller=listing.seller, title=listing.title, source=Order.Source.BUY,
             quantity=item.quantity, amount=listing.price * item.quantity, delivery_fee=listing.delivery_fee,
@@ -55,16 +81,30 @@ def create_payment(user, method, phone):
             listing.status = Listing.Status.SOLD
         listing.save(update_fields=["quantity", "status", "updated_at"])
 
-    total = sum((o.amount + o.delivery_fee for o in orders), Decimal("0")) + sum((o.total for o in unpaid), Decimal("0"))
-    payment = Payment.objects.create(user=user, method=method, phone=phone, amount=total)
-    for order in orders:
-        order.payment = payment
-        order.save()
-    for order in unpaid:
-        order.payment, order.status = payment, Order.Status.PENDING
-        order.save(update_fields=["payment", "status"])
+    def make_payment(group, extra=()):
+        total = sum((o.amount + o.delivery_fee for o in group), Decimal("0")) + sum((o.total for o in extra), Decimal("0"))
+        payment = Payment.objects.create(
+            user=user, method=method, amount=total, phone=phone,
+            status=Payment.Status.COD_PENDING if is_cod else Payment.Status.AWAITING,
+            delivery_phone=delivery_phone, delivery_address=delivery_address,
+        )
+        for order in group:
+            order.payment = payment
+            order.save()
+        for order in extra:
+            order.payment, order.status = payment, Order.Status.PENDING
+            order.save(update_fields=["payment", "status"])
+        return payment
+
+    if is_cod:
+        by_seller = {}
+        for order in orders:
+            by_seller.setdefault(order.seller_id, []).append(order)
+        payments = [make_payment(group) for group in by_seller.values()]
+    else:
+        payments = [make_payment(orders, unpaid)]
     CartItem.objects.filter(user=user).delete()
-    return payment
+    return payments
 
 
 def start_gateway(request, payment):
@@ -96,20 +136,28 @@ def checkout(request):
     if cart["blocked"]:
         messages.error(request, "Some items in your cart are no longer available. Update your cart first.")
         return redirect("cart")
-    form = CheckoutForm(request.POST or None)
+    cod_reason = cod_blocker(request.user, cart)
+    form = CheckoutForm(request.POST or None, cod_reason=cod_reason)
     if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data
         try:
-            payment = create_payment(request.user, form.cleaned_data["method"], form.cleaned_data["phone"])
+            payments = create_payments(request.user, data["method"], data["phone"], data["delivery_phone"], data["delivery_address"])
         except CheckoutError as exc:
             messages.error(request, str(exc))
             return redirect("cart")
+        if data["method"] == Payment.Method.COD:
+            messages.success(request, "Order placed. You'll pay in cash when it arrives, and the seller will call you to arrange delivery.")
+            if len(payments) == 1:
+                return redirect("payment_detail", reference=payments[0].reference)
+            return redirect("my_orders")
+        payment = payments[0]
         try:
             url = start_gateway(request, payment)
         except GatewayError as exc:  # the payment exists; the customer can retry from its page
             messages.error(request, str(exc))
             url = None
         return redirect(url or reverse("payment_detail", args=[payment.reference]))
-    return render(request, "market/checkout.html", {"cart": cart, "form": form})
+    return render(request, "market/checkout.html", {"cart": cart, "form": form, "cod_reason": cod_reason})
 
 
 @login_required
@@ -118,6 +166,10 @@ def payment_detail(request, reference):
     return render(request, "market/payment_detail.html", {
         "payment": payment,
         "orders": payment.orders.all(),
+        "fees": payment.listing_fees.select_related("listing"),
+        "cod_cancel_ok": (payment.method == Payment.Method.COD and payment.status == Payment.Status.COD_PENDING
+                          and timezone.now() - payment.created_at <= timedelta(minutes=settings.COD_CANCEL_MINUTES)),
+        "cod_cancel_minutes": settings.COD_CANCEL_MINUTES,
         "stk_ready": gateways.mpesa_stk_ready(),
         "card_ready": gateways.card_ready(),
         "test_mode": settings.PAYMENTS_TEST_MODE,
@@ -165,8 +217,13 @@ def payment_retry(request, reference):
 @require_POST
 def payment_cancel(request, reference):
     payment = _own_payment(request, reference)
-    if payment.status == Payment.Status.AWAITING and payment.release(Payment.Status.CANCELLED, "Cancelled by customer"):
-        messages.info(request, "Payment cancelled. The items were returned to stock.")
+    if payment.method == Payment.Method.COD and payment.status == Payment.Status.COD_PENDING:
+        if timezone.now() - payment.created_at > timedelta(minutes=settings.COD_CANCEL_MINUTES):
+            messages.error(request, f"Pay on Delivery orders can only be cancelled within {settings.COD_CANCEL_MINUTES} minutes. Contact the seller or support.")
+        elif payment.release(Payment.Status.CANCELLED, "Cancelled by customer"):
+            messages.info(request, "Order cancelled. The items were returned to stock.")
+    elif payment.status == Payment.Status.AWAITING and payment.release(Payment.Status.CANCELLED, "Cancelled by customer"):
+        messages.info(request, "Payment cancelled." + ("" if payment.purpose == Payment.Purpose.LISTING_FEE else " The items were returned to stock."))
     return redirect("payment_detail", reference=reference)
 
 

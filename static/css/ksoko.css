@@ -219,3 +219,13 @@ main>.promo{margin:22px 0}
 /* ---- Verification and staff payment controls ---- */
 .manual{display:flex;gap:6px}.manual input{width:180px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .attn{border-color:var(--deal)}
+
+/* ---- Pay on Delivery ---- */
+.seg3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.seg3{grid-template-columns:1fr}}
+.pill.cod_pending{background:#BFD9F2;color:#0E3A63}
+.cod{color:var(--green);font-weight:600}
+.codfee{margin-top:6px;padding:8px 12px;border-radius:10px;background:var(--tile);font-size:14px}
+.salecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+.salehead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}

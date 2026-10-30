@@ -65,8 +65,8 @@ def reject_payments(modeladmin, request, queryset):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("reference", "user", "method", "amount", "status", "provider_ref", "created_at")
-    list_filter = ("status", "method")
+    list_display = ("reference", "user", "purpose", "method", "amount", "status", "provider_ref", "created_at")
+    list_filter = ("status", "method", "purpose")
     search_fields = ("reference", "provider_ref", "user__username", "phone")
     readonly_fields = ("reference", "created_at", "paid_at", "confirmed_at", "confirmed_by")
     actions = [confirm_payments, reject_payments]
@@ -137,4 +137,17 @@ class OutboundEmailAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+from .models import ListingFee  # noqa: E402
+
+
+@admin.register(ListingFee)
+class ListingFeeAdmin(admin.ModelAdmin):
+    list_display = ("listing", "seller", "covers_value", "percent", "amount", "status", "paid_at")
+    list_filter = ("status",)
+    readonly_fields = [f.name for f in ListingFee._meta.fields]
+
+    def has_add_permission(self, request):
         return False

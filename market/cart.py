@@ -11,7 +11,7 @@ from .models import CartItem, Listing, Order
 
 def cart_summary(user):
     """Everything a customer owes right now: cart lines plus auctions they have won."""
-    items = CartItem.objects.filter(user=user).select_related("listing__seller").prefetch_related("listing__images")
+    items = CartItem.objects.filter(user=user).select_related("listing__seller").prefetch_related("listing__images", "listing__fees")
     lines, subtotal, delivery = [], Decimal("0"), Decimal("0")
     for item in items:
         listing = item.listing

@@ -15,7 +15,7 @@ from django.core.files.storage import default_storage
 from PIL import Image
 
 from . import emailer
-from .models import Campaign, Listing, ListingImage, MediaAsset, Payment, Review, SiteSettings
+from .models import Campaign, Listing, ListingFee, ListingImage, MediaAsset, Payment, Review, SiteSettings
 
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 DURATIONS = [("1", "1 day"), ("3", "3 days"), ("5", "5 days"), ("7", "7 days"), ("10", "10 days")]
@@ -48,7 +48,7 @@ class ListingForm(forms.ModelForm):
     class Meta:
         model = Listing
         fields = ["title", "category", "condition", "listing_type", "price",
-                  "original_price", "quantity", "delivery_fee", "description"]
+                  "original_price", "quantity", "allow_cod", "delivery_fee", "description"]
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "Brand, model, size or key feature", "autocomplete": "off"}),
             "description": forms.Textarea(attrs={
@@ -66,12 +66,19 @@ class ListingForm(forms.ModelForm):
         f = self.fields
         f["category"].empty_label = "Choose a category"
         f["delivery_fee"].required = False
+        pct = f"{settings.COD_LISTING_FEE_PERCENT:f}"
+        pct = pct.rstrip("0").rstrip(".") if "." in pct else pct
+        f["allow_cod"].help_text = (f"Buyers can pay cash when the item arrives. You pay a one-time fee of {pct}% of the item's "
+                                    "value (price x quantity) when you list it. Pay on Delivery switches on once the fee is confirmed.")
         f["images"].widget.attrs["accept"] = "image/jpeg,image/png,image/webp"
         if self.instance.pk:
             f["delete_images"].queryset = self.instance.images.all()
             f["listing_type"].disabled = True      # the format can't change after listing
             del f["duration"]                      # the end time is fixed once created
             f["free_delivery"].initial = self.instance.delivery_fee == 0
+            if ListingFee.objects.filter(listing=self.instance, payment__status__in=["awaiting", "paid"]).exists():
+                for name in ("price", "quantity", "allow_cod"):      # a fee payment is in progress: don't change what it covers
+                    f[name].disabled = True
             in_campaign = self.instance.campaign_entries.filter(
                 status__in=["pending", "approved"], campaign__ends_at__gt=timezone.now()).exists()
             if self.instance.bids.exists() or in_campaign:
@@ -110,6 +117,7 @@ class ListingForm(forms.ModelForm):
 
         if ltype == Listing.Type.AUCTION:
             data["quantity"] = 1  # an auction sells a single item
+            data["allow_cod"] = False
             if orig:
                 self.add_error("original_price", "Auctions can't show an original price.")
             if not self.instance.pk and not data.get("duration"):
@@ -194,6 +202,40 @@ def normalize_phone(raw):
 
 class CheckoutForm(forms.Form):
     method = forms.ChoiceField(choices=Payment.Method.choices, initial=Payment.Method.MPESA, widget=forms.RadioSelect)
+    phone = forms.CharField(required=False, label="M-Pesa phone number")
+    delivery_phone = forms.CharField(label="Delivery phone number")
+    delivery_address = forms.CharField(
+        label="Delivery address", min_length=10, max_length=300, widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Building, street and area, with any directions the courier needs.",
+    )
+
+    def __init__(self, *args, cod_reason="", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cod_reason = cod_reason      # why Pay on Delivery can't be used for this order, if it can't
+
+    def clean(self):
+        data = super().clean()
+        method = data.get("method")
+        if method == Payment.Method.MPESA:
+            try:
+                data["phone"] = normalize_phone(data.get("phone", ""))
+            except forms.ValidationError as exc:
+                self.add_error("phone", exc)
+        else:
+            data["phone"] = ""
+        if method == Payment.Method.COD and self.cod_reason:
+            self.add_error("method", self.cod_reason)
+        if data.get("delivery_phone"):
+            try:
+                data["delivery_phone"] = normalize_phone(data["delivery_phone"])
+            except forms.ValidationError as exc:
+                self.add_error("delivery_phone", exc)
+        return data
+
+
+class FeePaymentForm(forms.Form):
+    """How a seller pays the Pay-on-Delivery listing fee (online only: a fee can't be paid on delivery)."""
+    method = forms.ChoiceField(choices=[(Payment.Method.MPESA, "M-Pesa"), (Payment.Method.CARD, "Card")], initial=Payment.Method.MPESA, widget=forms.RadioSelect)
     phone = forms.CharField(required=False, label="M-Pesa phone number")
 
     def clean(self):

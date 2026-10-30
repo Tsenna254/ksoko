@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Pay on Delivery fee{% endblock %}
+{% block content %}
+<div class="formcard">
+  <h1>Switch on Pay on Delivery</h1>
+  <p>For <a href="{{ listing.get_absolute_url }}">{{ listing.title }}</a>, buyers can pay cash when the item arrives. This takes a one-time fee of <strong>{{ fee.percent|floatformat:"-2" }}%</strong> of the item’s value, paid when you list it.</p>
+  <dl class="facts" style="grid-template-columns:200px 1fr">
+    <dt>Value covered</dt><dd>KES {{ fee.covers_value|floatformat:0|intcomma }}</dd>
+    <dt>Fee to pay now</dt><dd><strong>KES {{ fee.amount|floatformat:0|intcomma }}</strong></dd>
+  </dl>
+  <p class="meta">Until our team confirms the fee, your item keeps selling as normal with prepaid payment. The fee isn’t refunded if you later turn Pay on Delivery off. If you raise the price or quantity, the extra value needs an extra fee.</p>
+  <form method="post" novalidate>{% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="seg" role="radiogroup" aria-label="Payment method">
+      <div><input type="radio" name="method" id="f-mpesa" value="mpesa" {% if form.method.value != "card" %}checked{% endif %}><label for="f-mpesa">M-Pesa<small>Pay from your phone</small></label></div>
+      <div><input type="radio" name="method" id="f-card" value="card" {% if form.method.value == "card" %}checked{% endif %}><label for="f-card">Card<small>Visa or Mastercard</small></label></div>
+    </div>
+    <div class="fld" id="fphone" style="margin-top:16px"><label for="id_phone">M-Pesa phone number</label>
+      <input type="text" name="phone" id="id_phone" inputmode="tel" placeholder="0712 345 678" value="{{ form.phone.value|default:'' }}">{{ form.phone.errors }}</div>
+    <button class="solid">Pay KES {{ fee.amount|floatformat:0|intcomma }}</button>
+    <a class="ghost" href="{% url 'my_listings' %}">Not now</a>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function(){var r=document.querySelectorAll("input[name=method]"),p=document.getElementById("fphone");
+function s(){p.hidden=!document.getElementById("f-mpesa").checked}r.forEach(function(x){x.addEventListener("change",s)});s()})();
+</script>{% endblock %}

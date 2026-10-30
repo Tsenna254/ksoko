@@ -88,6 +88,7 @@ class Listing(models.Model):
         help_text="Enter 0 for free delivery.",
     )
     quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)], help_text="How many are available.")
+    allow_cod = models.BooleanField("Offer Pay on Delivery", default=False)
     ends_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -125,6 +126,21 @@ class Listing(models.Model):
         if self.original_price and self.original_price > self.price:
             return int((1 - self.price / self.original_price) * 100)
         return 0
+
+    @property
+    def cod_covered(self):
+        """Value of this item already covered by paid Pay-on-Delivery listing fees."""
+        return sum((f.covers_value for f in self.fees.all() if f.status == "paid"), Decimal("0"))
+
+    @property
+    def cod_active(self):
+        """Pay on Delivery is offered: the seller opted in and their one-time fee covers the item's current value."""
+        return bool(self.allow_cod and self.listing_type == self.Type.BUY and self.quantity > 0
+                    and self.cod_covered >= self.price * self.quantity)
+
+    @property
+    def open_fee(self):
+        return next((f for f in self.fees.all() if f.status == "unpaid"), None)
 
     @property
     def active_campaign(self):
@@ -280,20 +296,29 @@ class Payment(models.Model):
     class Method(models.TextChoices):
         MPESA = "mpesa", "M-Pesa"
         CARD = "card", "Card"
+        COD = "cod", "Pay on delivery"
 
     class Status(models.TextChoices):
         AWAITING = "awaiting", "Awaiting payment"
+        COD_PENDING = "cod_pending", "Pay on delivery"
         PAID = "paid", "Paid, awaiting confirmation"
         CONFIRMED = "confirmed", "Confirmed"
         FAILED = "failed", "Failed"
         REJECTED = "rejected", "Rejected"
         CANCELLED = "cancelled", "Cancelled"
 
+    class Purpose(models.TextChoices):
+        ORDER = "order", "Order"
+        LISTING_FEE = "listing_fee", "Listing fee"
+
     reference = models.CharField(max_length=20, unique=True, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="payments")
     method = models.CharField(max_length=10, choices=Method.choices)
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.AWAITING, db_index=True)
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.AWAITING, db_index=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    purpose = models.CharField(max_length=12, choices=Purpose.choices, default=Purpose.ORDER)
+    delivery_phone = models.CharField(max_length=15, blank=True)
+    delivery_address = models.CharField(max_length=300, blank=True)
     phone = models.CharField(max_length=15, blank=True)
     mpesa_checkout_id = models.CharField(max_length=100, blank=True, db_index=True)
     provider_ref = models.CharField("M-Pesa code / card transaction ID", max_length=60, blank=True)
@@ -321,7 +346,7 @@ class Payment(models.Model):
 
     @property
     def is_open(self):
-        return self.status in (self.Status.AWAITING, self.Status.PAID)
+        return self.status in (self.Status.AWAITING, self.Status.PAID, self.Status.COD_PENDING)
 
     def mark_paid(self, provider_ref, note=""):
         """The customer has paid (M-Pesa code received or card charge verified). Staff still confirm."""
@@ -336,6 +361,17 @@ class Payment(models.Model):
         return True
 
     @transaction.atomic
+    def mark_cod_delivered(self):
+        """The seller says the order was delivered and the cash collected. Staff still confirm."""
+        if self.status != self.Status.COD_PENDING:
+            return False
+        self.status = self.Status.PAID
+        self.paid_at = timezone.now()
+        self.note = "Seller marked delivered and cash collected"
+        self.save(update_fields=["status", "paid_at", "note"])
+        return True
+
+    @transaction.atomic
     def confirm(self, staff=None, manual_reason=""):
         """Staff verified the money arrived: complete the orders.
 
@@ -344,7 +380,7 @@ class Payment(models.Model):
         """
         if self.status == self.Status.PAID:
             pass
-        elif self.status == self.Status.AWAITING and manual_reason.strip():
+        elif self.status in (self.Status.AWAITING, self.Status.COD_PENDING) and manual_reason.strip():
             self.note = f"Confirmed by hand: {manual_reason.strip()}"[:255]
         else:
             return False
@@ -353,6 +389,7 @@ class Payment(models.Model):
         self.confirmed_at, self.confirmed_by = now, staff
         self.save(update_fields=["status", "confirmed_at", "confirmed_by", "note"])
         self.orders.update(status=Order.Status.COMPLETED, completed_at=now)
+        self.listing_fees.update(status="paid", paid_at=now)     # a listing-fee payment switches Pay on Delivery on
         return True
 
     @transaction.atomic
@@ -372,6 +409,7 @@ class Payment(models.Model):
                 if listing.status == Listing.Status.SOLD:
                     listing.status = Listing.Status.ACTIVE
                 listing.save(update_fields=["quantity", "status", "updated_at"])
+        self.listing_fees.update(payment=None)                    # an unpaid listing fee can be paid again later
         self.status = status
         if note:
             self.note = note[:255]
@@ -571,6 +609,8 @@ class CampaignEntry(models.Model):
         listing.save(update_fields=["price", "original_price", "updated_at"])
         self.applied = False
         self.save(update_fields=["applied"])
+        from .cod import sync_cod_fee          # the restored price may need a bigger Pay-on-Delivery fee
+        sync_cod_fee(listing)
         return True
 
 
@@ -677,3 +717,27 @@ class OutboundEmail(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class ListingFee(models.Model):
+    """The one-time fee a seller pays (a percentage of the item's value) to offer Pay on Delivery."""
+
+    class Status(models.TextChoices):
+        UNPAID = "unpaid", "Unpaid"
+        PAID = "paid", "Paid"
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="fees")
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    covers_value = models.DecimalField(max_digits=12, decimal_places=2, help_text="The part of the item's value this fee covers.")
+    percent = models.DecimalField(max_digits=5, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment = models.ForeignKey(Payment, null=True, blank=True, on_delete=models.SET_NULL, related_name="listing_fees")
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.UNPAID, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    paid_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.listing} fee KES {self.amount} ({self.status})"

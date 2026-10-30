@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}My sales{% endblock %}
+{% block content %}
+<div class="hd" style="margin-top:28px"><h2>My sales</h2><a class="ghost" href="{% url 'my_listings' %}">My listings</a></div>
+{% for r in rows %}{% with p=r.payment %}
+<article class="salecard">
+  <div class="salehead">
+    <div><strong>{{ p.reference }}</strong> <span class="pill {{ p.status }}">{{ p.get_status_display }}</span>
+      <span class="meta">{{ p.created_at|date:"j M Y, H:i" }} · buyer {{ p.user.username }}</span></div>
+    <strong>KES {{ r.total|floatformat:0|intcomma }}</strong>
+  </div>
+  <ul class="slist">{% for o in r.orders %}<li><span>{{ o.title }}{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}</span><span>KES {{ o.total|floatformat:0|intcomma }}</span></li>{% endfor %}</ul>
+  {% if r.show_details %}
+    <p class="meta">Deliver to <strong>{{ p.delivery_phone }}</strong>, {{ p.delivery_address }}</p>
+  {% else %}<p class="meta">Waiting for the buyer’s payment. Delivery details appear once they’ve paid.</p>{% endif %}
+  {% if p.method == "cod" and p.status == "cod_pending" %}
+    <p class="msg success">Pay on Delivery: collect <strong>KES {{ p.amount|floatformat:0|intcomma }}</strong> in cash when you deliver.</p>
+    {% if p.note %}<p class="meta">{{ p.note }}</p>{% endif %}
+    <div class="acts">
+      <form method="post" action="{% url 'sale_delivered' p.reference %}" onsubmit="return confirm('Confirm you delivered the order and collected the cash?')">{% csrf_token %}<button class="solid sm">Delivered, cash collected</button></form>
+      <form method="post" action="{% url 'sale_failed' p.reference %}" class="manual">{% csrf_token %}<input name="reason" maxlength="150" placeholder="Why couldn’t you deliver?" aria-label="Reason"><button class="ghost sm">Delivery failed</button></form>
+    </div>
+  {% elif p.method == "cod" and p.status == "paid" %}<p class="meta">Marked delivered. Waiting for our team to confirm.</p>{% endif %}
+</article>{% endwith %}
+{% empty %}<p class="empty">No sales yet. When someone buys your items they show up here with their delivery details.</p>{% endfor %}
+{% endblock %}

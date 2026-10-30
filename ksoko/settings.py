@@ -1,5 +1,6 @@
 import os
 import urllib.parse
+from decimal import Decimal
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -11,7 +12,10 @@ def _load_dotenv(path):
     """Read KEY=value lines from a .env file (for local development). Real environment variables win."""
     if not path.exists():
         return
-    for line in path.read_text().splitlines():
+    raw = path.read_bytes()
+    # Windows PowerShell can save files as UTF-16; editors add a BOM. Handle all of them.
+    text = raw.decode("utf-16") if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else raw.decode("utf-8-sig", errors="replace")
+    for line in text.splitlines():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
@@ -208,6 +212,11 @@ CODE_MAX_PER_HOUR = 5          # emails per account per hour
 PAYMENTS_TEST_MODE = _flag("PAYMENTS_TEST_MODE", "1" if DEBUG else "0")
 if PAYMENTS_TEST_MODE and not DEBUG:
     raise ImproperlyConfigured("PAYMENTS_TEST_MODE must be off in production: it lets anyone mark a payment as paid.")
+# Pay on Delivery: sellers pay this percentage of the item's value, once, when they list it.
+COD_LISTING_FEE_PERCENT = Decimal(os.environ.get("COD_LISTING_FEE_PERCENT", "10"))
+COD_MAX_ORDER_KES = int(os.environ.get("COD_MAX_ORDER_KES", "100000"))   # biggest order allowed on delivery
+COD_MAX_FAILED = 2             # a buyer with this many failed deliveries loses Pay on Delivery
+COD_CANCEL_MINUTES = 60        # buyers can cancel a Pay on Delivery order within this time
 PAYMENT_HOLD_MINUTES = 60      # unpaid payments are cancelled and stock released after this long
 
 MPESA_ENV = os.environ.get("MPESA_ENV", "sandbox")

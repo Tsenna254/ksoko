@@ -24,6 +24,7 @@
       <a href="{% url 'my_listings' %}">My listings</a>
       <a href="{% url 'seller_campaigns' %}">Campaigns</a>
       <a href="{% url 'my_orders' %}">My orders</a>
+      <a href="{% url 'seller_sales' %}">My sales</a>
       {% if user.is_staff %}<a href="{% url 'dashboard' %}">Dashboard</a>{% endif %}
       <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="linkbtn">Sign out</button></form>
     {% endif %}

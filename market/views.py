@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from .cod import sync_cod_fee
 from .throttle import limited, too_many
 from .recommend import recent_queries, record_search, recommend_for, personalisation_off
 from .forms import BidForm, ListingForm, RegisterForm, ReviewForm
@@ -18,11 +19,11 @@ from .models import Bid, Campaign, Category, Listing, MediaAsset, Order, Review,
 
 
 def _limits():
-    return {"max_images": settings.MAX_LISTING_IMAGES, "max_mb": settings.MAX_IMAGE_MB}
+    return {"max_images": settings.MAX_LISTING_IMAGES, "max_mb": settings.MAX_IMAGE_MB, "cod_percent": settings.COD_LISTING_FEE_PERCENT}
 
 
 def _listings():
-    return Listing.objects.select_related("category", "seller").prefetch_related("images", "campaign_entries__campaign").with_counts()
+    return Listing.objects.select_related("category", "seller").prefetch_related("images", "campaign_entries__campaign", "fees").with_counts()
 
 
 def home(request):
@@ -113,6 +114,9 @@ def create_listing(request):
     if request.method == "POST" and form.is_valid():
         listing = form.save(seller=request.user)
         messages.success(request, "Your listing is live.")
+        if sync_cod_fee(listing):
+            messages.info(request, "One more step: pay the listing fee to switch on Pay on Delivery. Until then it sells prepaid.")
+            return redirect("listing_fee_pay", pk=listing.pk)
         return redirect(listing)
     return render(request, "market/listing_form.html", {"form": form, "listing": None, **_limits()})
 
@@ -127,6 +131,9 @@ def edit_listing(request, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Listing updated.")
+        if sync_cod_fee(listing):
+            messages.info(request, "Pay on Delivery needs a listing fee for this item's value before it switches on.")
+            return redirect("listing_fee_pay", pk=listing.pk)
         return redirect(listing)
     return render(request, "market/listing_form.html", {"form": form, "listing": listing, **_limits()})
 

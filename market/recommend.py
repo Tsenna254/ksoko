@@ -202,7 +202,7 @@ def build_profile(request, seed=None):
 # ---- Finding and ranking candidates -----------------------------------------------------
 
 def _base(request):
-    qs = Listing.objects.active().select_related("category", "seller").prefetch_related("images", "campaign_entries__campaign")
+    qs = Listing.objects.active().select_related("category", "seller").prefetch_related("images", "campaign_entries__campaign", "fees")
     if request.user.is_authenticated:
         qs = qs.exclude(seller=request.user)
     return qs.with_counts().annotate(

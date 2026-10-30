@@ -6,7 +6,8 @@ auctions, buy fixed-price items and keep a watchlist.
 ## Run it
 
 ```bash
-python -m venv venv && source venv/bin/activate     # Windows: venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate       # Windows PowerShell: .\venv\Scripts\Activate.ps1 (see the Windows section below)
 cp .env.example .env        # local settings; DJANGO_DEBUG=1 switches on development mode
 pip install -r requirements.txt
 python manage.py makemigrations market
@@ -58,7 +59,8 @@ python manage.py close_auctions
 - **Ratings**: after an order, the buyer rates the item and the seller (1 to 5 stars, optional comment) from **My orders**. Item ratings show on cards and listing pages, vendor ratings show next to every seller name and on `/seller/<username>/`, and the dashboard lists best and lowest rated products and vendors.
 - Fixed-price listings now have a **quantity**; each purchase takes one and the listing shows as sold at zero. Listings with sales or bids can't be deleted.
 
-After pulling these changes run `python manage.py makemigrations market && python manage.py migrate`.
+After pulling these changes run `python manage.py makemigrations market
+python manage.py migrate`.
 
 
 ## Cart, checkout and payments
@@ -78,7 +80,8 @@ Cards go through Flutterwave's hosted checkout, so card numbers never touch this
 ### Trying it without gateway accounts
 With `DEBUG` on, `PAYMENTS_TEST_MODE` is on: each payment page has a **Simulate a successful payment** button. Use it, then confirm the payment on `/manage/`. Switch test mode off (`PAYMENTS_TEST_MODE=0`) before going live.
 
-New migrations are needed again: `python manage.py makemigrations market && python manage.py migrate`. Run `pip install -r requirements.txt` for `requests`.
+New migrations are needed again: `python manage.py makemigrations market
+python manage.py migrate`. Run `pip install -r requirements.txt` for `requests`.
 
 
 ## Branding, promotional media and campaigns (admin menu)
@@ -91,7 +94,8 @@ The staff menu (shown across `/manage/`) now has four tabs: **Dashboard**, **Bra
 - **Sellers**: a **Campaigns** link in the top menu opens `/my/campaigns/`, where sellers see open campaigns and their terms, join with selected fixed-price listings (with a price preview), track entry status and withdraw.
 - While a campaign is live, joined listings show the campaign price with the old price crossed out and a badge. Their prices are locked, and put back exactly as the seller had them when the campaign ends, the entry is withdrawn or rejected, or the campaign is deleted. The site starts and ends discounts itself at most once a minute; `python manage.py sync_campaigns` does the same from cron if you prefer.
 
-Run `python manage.py makemigrations market && python manage.py migrate` again after updating.
+Run `python manage.py makemigrations market
+python manage.py migrate` again after updating.
 
 **Branding tips**: if an uploaded background looks faint, lower **Cover strength** (page background) or **Banner tint** (homepage photo). Saving now tells you exactly what changed, or that nothing was saved and why. After updating, run `makemigrations` and `migrate` (a new "banner tint" setting was added), then re-save Branding once.
 
@@ -106,7 +110,7 @@ Run `python manage.py makemigrations market && python manage.py migrate` again a
 - If the site runs behind a proxy or load balancer you control, set `TRUST_PROXY_HEADERS=1` so the real visitor IP is used.
 - **Admin**: the dashboard now lists top searches and searches that returned nothing, which shows you what to stock.
 
-Run `makemigrations market` and `migrate` again after updating.
+Run `python manage.py makemigrations market`, then `python manage.py migrate` again after updating.
 
 
 ## Email verification and sign-in codes
@@ -135,7 +139,7 @@ location /media/ {
 client_max_body_size 30m;
 ```
 4. Add an M-Pesa callback secret (`MPESA_CALLBACK_SECRET`, a long random string) and register `SITE_URL + /payments/mpesa/callback/<secret>/` with Safaricom.
-5. Keep `.env`, the database and backups out of git and web-readable folders; back up the database; keep Django, Pillow and other packages updated (`pip install -U -r requirements.txt` and `pip install pip-audit && pip-audit`).
+5. Keep `.env`, the database and backups out of git and web-readable folders; back up the database; keep Django, Pillow and other packages updated (`pip install -U -r requirements.txt`, then `pip install pip-audit`, then `pip-audit`).
 6. Publish a privacy policy that covers email, IP address and browsing data (Kenya Data Protection Act).
 
 
@@ -156,4 +160,44 @@ All verification-code emails (sign-up and new-network sign-in) and password-rese
 - **Monitoring**: the admin dashboard has an **Email delivery** panel for the last 24 hours (sent, waiting, failed, latest errors) that turns red when emails are failing. Full records are under Django admin > Outbound emails.
 - Tests for the queue: `python manage.py test market`.
 
-Run `makemigrations market` and `migrate` after updating.
+Run `python manage.py makemigrations market`, then `python manage.py migrate` after updating.
+
+
+## Pay on Delivery (cash on delivery) and the 10% listing fee
+
+- **Sellers**: tick **Offer Pay on Delivery** when listing a fixed-price item. They pay a **one-time fee of 10% of the item's value** (price x quantity) right after uploading, by M-Pesa or card, and staff confirm it like any payment. Until then the item sells normally, prepaid only. Change the rate with `COD_LISTING_FEE_PERCENT`. Raising the price or quantity later creates a top-up fee for the extra value, and Pay on Delivery pauses until it is paid. The fee isn't refunded if the seller turns Pay on Delivery off. Auctions can't use it.
+- **Buyers**: checkout now asks for a delivery phone number and address (shared with the seller), and offers **Pay on delivery** when every item in the cart offers it (not for won auctions, not above `COD_MAX_ORDER_KES`, and not for buyers with `COD_MAX_FAILED` failed deliveries). A mixed-seller cart becomes one order per seller. Buyers can cancel within `COD_CANCEL_MINUTES`.
+- **Delivery**: the seller sees the order, address and cash to collect under **My sales**, delivers, and presses *Delivered, cash collected* (or *Delivery failed* with a reason). Staff then confirm on the dashboard, which completes the order and counts it as a sale, or press *Not delivered*, which returns the stock and counts against the buyer.
+- **Staff**: the dashboard lists Pay on Delivery orders next to other payments (with the delivery address and any seller note), shows **Pay on Delivery fees** collected as its own figure, and every confirm or failure is in the audit log.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate` after updating.
+
+
+## Windows (PowerShell) quick start
+
+Easiest: open PowerShell in this folder and run the helper script, which does every step and stops at the first error:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass    # lets this one window run scripts
+.\setup.ps1
+```
+
+Or step by step (one command per line; **don't join them with `&&`**, Windows PowerShell 5.1 doesn't understand it, use `;` or separate lines):
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+Copy-Item .env.example .env
+pip install -r requirements.txt
+python manage.py makemigrations market
+python manage.py migrate
+python manage.py seed_categories
+python manage.py createsuperuser
+python manage.py set_email YOURUSERNAME you@example.com
+python manage.py runserver
+```
+
+- If `python` isn't found, use `py` instead (`py manage.py migrate`).
+- Setting a variable for one session: `$env:DJANGO_DEBUG = "1"` (not `DJANGO_DEBUG=1 python ...`).
+- If `migrate` stops with "Set DJANGO_SECRET_KEY..." or "Set DATABASE_URL...", the `.env` file is missing or has no `DJANGO_DEBUG=1` line: run `Copy-Item .env.example .env` again.
+- If `migrate` says "No migrations to apply" but tables are missing, you skipped `makemigrations market`.

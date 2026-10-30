@@ -4,13 +4,14 @@
 <div class="hd" style="margin-top:28px"><h2>My listings</h2><a class="solid" href="{% url 'sell' %}">Sell an item</a></div>
 {% if items %}
 <div class="tablewrap"><table>
-  <thead><tr><th>Item</th><th>Format</th><th>Price</th><th>Bids</th><th>Views</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Item</th><th>Format</th><th>Price</th><th>Bids</th><th>Views</th><th>Stock</th><th>Pay on Delivery</th><th>Status</th><th></th></tr></thead>
   <tbody>{% for l in items %}
   <tr>
     <td><a href="{{ l.get_absolute_url }}">{{ l.title }}</a></td>
     <td>{{ l.get_listing_type_display }}</td>
     <td>KES {{ l.price|floatformat:0|intcomma }}</td>
     <td>{{ l.num_bids }}</td><td>{{ l.num_views }}</td><td>{% if l.is_auction %}-{% else %}{{ l.quantity }}{% endif %}</td>
+    <td>{% if l.cod_active %}On{% elif l.allow_cod %}{% with f=l.open_fee %}{% if f %}Fee due: <a href="{% url 'listing_fee_pay' l.pk %}">pay KES {{ f.amount|floatformat:0|intcomma }}</a>{% else %}Paying{% endif %}{% endwith %}{% else %}Off{% endif %}</td>
     <td>{{ l.get_status_display }}</td>
     <td>{% if l.status == "active" %}<a href="{% url 'listing_edit' l.pk %}">Edit</a>{% endif %}</td>
   </tr>{% endfor %}</tbody>

@@ -15,15 +15,15 @@
     <thead><tr><th>Reference</th><th>Customer</th><th>Method</th><th>Amount</th><th>M-Pesa code / transaction</th><th>Status</th><th></th></tr></thead>
     <tbody>{% for p in pending_payments %}<tr>
       <td><strong>{{ p.reference }}</strong><br><span class="meta">{{ p.created_at|date:"j M H:i" }}</span></td>
-      <td>{{ p.user.username }}{% if p.phone %}<br><span class="meta">{{ p.phone }}</span>{% endif %}</td>
-      <td>{{ p.get_method_display }}</td>
+      <td>{{ p.user.username }}{% if p.phone %}<br><span class="meta">{{ p.phone }}</span>{% endif %}{% if p.delivery_address %}<br><span class="meta">Deliver to {{ p.delivery_phone }}, {{ p.delivery_address|truncatechars:70 }}</span>{% endif %}</td>
+      <td>{{ p.get_method_display }}{% if p.purpose == "listing_fee" %}<br><span class="meta">Listing fee</span>{% endif %}</td>
       <td>KES {{ p.amount|floatformat:0|intcomma }}</td>
       <td>{{ p.provider_ref|default:"-" }}{% if p.note %}<br><span class="meta">{{ p.note }}</span>{% endif %}</td>
       <td><span class="pill {{ p.status }}">{{ p.get_status_display }}</span></td>
       <td class="acts">
         {% if p.status == "paid" %}<form method="post" action="{% url 'payment_decision' p.pk 'confirm' %}">{% csrf_token %}<button class="solid sm">Confirm</button></form>
         {% else %}<form method="post" action="{% url 'payment_decision' p.pk 'confirm' %}" class="manual">{% csrf_token %}<input name="reason" required maxlength="150" placeholder="Why confirm without payment?" aria-label="Reason for confirming by hand"><button class="ghost sm">Confirm by hand</button></form>{% endif %}
-        <form method="post" action="{% url 'payment_decision' p.pk 'reject' %}" onsubmit="return confirm('Reject this payment and return the stock?')">{% csrf_token %}<button class="ghost sm">Reject</button></form>
+        <form method="post" action="{% url 'payment_decision' p.pk 'reject' %}" onsubmit="return confirm('Reject this payment and return the stock?')">{% csrf_token %}<button class="ghost sm">{% if p.method == "cod" %}Not delivered{% else %}Reject{% endif %}</button></form>
       </td></tr>{% endfor %}</tbody></table></div>
   {% else %}<p class="empty">Nothing waiting. New payments show up here as customers pay.</p>{% endif %}
 </section>
