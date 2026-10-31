@@ -229,3 +229,29 @@ main>.promo{margin:22px 0}
 .salecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
 .salehead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+
+.chip.on{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
+
+/* ---- Filter pop-up and sort menu ---- */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.solid .count{background:var(--accent,#F2B705);color:#14201A;border-radius:99px;padding:0 7px;font-size:12px;margin-left:4px}
+.sortmenu{position:relative}
+.sortmenu summary{list-style:none;cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 16px}
+.sortmenu summary::-webkit-details-marker{display:none}
+.sortmenu ul{position:absolute;right:0;top:calc(100% + 6px);z-index:35;list-style:none;margin:0;padding:6px;min-width:220px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.18)}
+.sortmenu a{display:block;padding:8px 12px;border-radius:8px;text-decoration:none}
+.sortmenu a:hover{background:var(--tile)}.sortmenu a[aria-current]{font-weight:700;color:var(--green)}
+.activechips{margin-bottom:12px}
+.filterdlg{border:0;padding:0;border-radius:18px;background:var(--card);color:var(--ink);width:min(520px,94vw);max-height:88vh;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.filterdlg::backdrop{background:rgba(0,0,0,.5)}
+.fform{display:flex;flex-direction:column;max-height:88vh}
+.fhead,.ffoot{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:var(--card)}
+.fhead{border-bottom:1px solid var(--line)}.ffoot{border-top:1px solid var(--line);gap:10px}
+.fhead h2{font-size:22px}
+.fbody{overflow-y:auto;padding:6px 20px 14px}
+.fsec{padding:14px 0;border-bottom:1px solid var(--line)}.fsec:last-child{border:0}
+.fsec h3{font-size:16px;margin-bottom:8px}.fsec .chk{margin:5px 0}
+.fsec input[type=number]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.paramrow[hidden]{display:none!important}
+.specs{grid-template-columns:200px 1fr}
+@media(max-width:600px){.filterdlg{width:100vw;max-width:100vw;margin:auto 0 0;border-radius:18px 18px 0 0;max-height:92vh}.fform{max-height:92vh}.toolbar{width:100%}}

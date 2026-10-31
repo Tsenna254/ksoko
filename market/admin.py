@@ -1,9 +1,18 @@
 from django.contrib import admin
+from django.db.models import Count, F
+from django.db.models.functions import Coalesce
 
 from . import audit
+from .models import FilterOption, FilterParameter, ListingAttribute
 
 from .models import (Bid, Campaign, CampaignEntry, CartItem, Category, Listing, ListingImage, MediaAsset, Order,
                      PageView, Payment, Review, SearchEvent, SiteSettings, Watch)
+
+
+class ListingAttributeInline(admin.TabularInline):
+    model = ListingAttribute
+    extra = 0
+    fields = ("parameter", "option", "number", "yes")
 
 
 class ListingImageInline(admin.TabularInline):
@@ -11,9 +20,46 @@ class ListingImageInline(admin.TabularInline):
     extra = 0
 
 
+class SubcategoryInline(admin.TabularInline):
+    """Add sub categories right on a main category's page."""
+    model = Category
+    fk_name = "parent"
+    fields = ("name",)
+    extra = 3
+    verbose_name = "sub category"
+    verbose_name_plural = "sub categories"
+
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    prepopulated_fields = {"slug": ("name",)}
+    list_display = ("name_in_tree", "parent", "slug", "listing_count")
+    list_filter = (("parent", admin.RelatedOnlyFieldListFilter),)
+    search_fields = ("name", "parent__name")
+    fields = ("name", "parent", "slug")
+    inlines = [SubcategoryInline]
+    # The admin applies its own ordering over the queryset's, so say it here: each main category, then its sub categories.
+    ordering = (Coalesce("parent__name", "name"), F("parent").asc(nulls_first=True), "name")
+
+    def get_queryset(self, request):
+        return Category.objects.select_related("parent").annotate(n_listings=Count("listings"))
+
+    def get_inline_instances(self, request, obj=None):
+        if obj is not None and obj.parent_id:      # a sub category can't have sub categories of its own
+            return []
+        return super().get_inline_instances(request, obj)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "parent":              # only main categories can be a parent
+            kwargs["queryset"] = Category.objects.top()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @admin.display(description="Category", ordering="name")
+    def name_in_tree(self, obj):
+        return f"\u2003\u21b3 {obj.name}" if obj.parent_id else obj.name
+
+    @admin.display(description="Listings")
+    def listing_count(self, obj):
+        return obj.n_listings
 
 
 @admin.register(Listing)
@@ -21,7 +67,7 @@ class ListingAdmin(admin.ModelAdmin):
     list_display = ("title", "seller", "category", "listing_type", "price", "status", "created_at")
     list_filter = ("status", "listing_type", "category")
     search_fields = ("title", "seller__username")
-    inlines = [ListingImageInline]
+    inlines = [ListingImageInline, ListingAttributeInline]
 
 
 admin.site.register(Bid)
@@ -151,3 +197,62 @@ class ListingFeeAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+from django import forms as djforms  # noqa: E402
+
+
+class FilterOptionInline(admin.TabularInline):
+    model = FilterOption
+    extra = 3
+    fields = ("value", "sort_order")
+
+
+class FilterParameterAdminForm(djforms.ModelForm):
+    quick_options = djforms.CharField(
+        label="Quick add options", required=False,
+        widget=djforms.Textarea(attrs={"rows": 5, "placeholder": "Samsung\nApple\nTecno\nInfinix"}),
+        help_text="For 'Pick one from a list'. Type one option per line to add many at once. They're added when you save.",
+    )
+
+    class Meta:
+        model = FilterParameter
+        fields = "__all__"
+
+
+@admin.register(FilterParameter)
+class FilterParameterAdmin(admin.ModelAdmin):
+    """Create the filters shoppers use and sellers fill in: Brand, Colour, Storage, Dual SIM..."""
+    form = FilterParameterAdminForm
+    list_display = ("name", "kind", "unit", "where", "required", "show_in_filter", "is_active", "sort_order")
+    list_editable = ("is_active", "show_in_filter", "sort_order")
+    list_filter = ("kind", "is_active")
+    search_fields = ("name",)
+    filter_horizontal = ("categories",)
+    inlines = [FilterOptionInline]
+    fieldsets = (
+        (None, {"fields": ("name", "kind", "unit", "quick_options")}),
+        ("Where it applies", {"fields": ("categories",)}),
+        ("Behaviour", {"fields": ("required", "show_in_filter", "is_active", "sort_order")}),
+    )
+
+    @admin.display(description="Applies to")
+    def where(self, obj):
+        names = [c.full_name for c in obj.categories.all()]
+        return ", ".join(names) if names else "Every category"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("categories__parent")
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        obj = form.instance
+        lines = [ln.strip()[:60] for ln in form.cleaned_data.get("quick_options", "").splitlines() if ln.strip()]
+        if obj.kind == FilterParameter.Kind.CHOICE and lines:
+            have = {o.value.lower() for o in obj.options.all()}
+            order = obj.options.count()
+            for value in dict.fromkeys(lines):                       # keeps the typed order, drops repeats
+                if value.lower() not in have:
+                    order += 1
+                    FilterOption.objects.create(parameter=obj, value=value, sort_order=order)
+                    have.add(value.lower())

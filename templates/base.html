@@ -36,7 +36,7 @@
     <form class="sbox" action="{% url 'listing_list' %}" method="get" role="search">
       <select name="category" aria-label="Category">
         <option value="">All categories</option>
-        {% for c in nav_categories %}<option value="{{ c.slug }}">{{ c.name }}</option>{% endfor %}
+        {% for c in nav_categories %}<option value="{{ c.slug }}">{{ c.name }}</option>{% for sub in c.children.all %}<option value="{{ sub.slug }}">&nbsp;&nbsp;&nbsp;{{ sub.name }}</option>{% endfor %}{% endfor %}
       </select>
       <input name="q" type="search" placeholder="Search for anything" aria-label="Search" value="{{ request.GET.q }}">
       <button>Search</button>

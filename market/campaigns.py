@@ -51,8 +51,9 @@ def slots_left(campaign, user):
 def eligible_listings(campaign, user):
     """Active fixed-price listings of this seller that can still join (one running campaign per listing)."""
     qs = Listing.objects.active().filter(seller=user, listing_type=Listing.Type.BUY)
-    if campaign.categories.exists():
-        qs = qs.filter(category__in=campaign.categories.all())
+    chosen = campaign.categories.all()
+    if chosen.exists():             # picking a main category also allows its sub categories
+        qs = qs.filter(Q(category__in=chosen) | Q(category__parent__in=chosen))
     busy = CampaignEntry.objects.filter(status__in=OPEN_STATUSES, campaign__ends_at__gt=timezone.now())
     return qs.exclude(pk__in=busy.values("listing_id"))
 

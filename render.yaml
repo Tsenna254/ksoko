@@ -1,0 +1,59 @@
+# Render Blueprint: deploys Ksoko with a web service, a PostgreSQL database and a persistent disk for uploads.
+# Render dashboard > New > Blueprint > pick your GitHub repository. You'll be asked for the values marked "sync: false".
+# Plan names change over time: if Render says one is invalid, pick a current plan in the dashboard.
+
+services:
+  - type: web
+    name: ksoko
+    runtime: python
+    plan: starter                  # a persistent disk needs a paid plan. Free plans sleep when idle and lose uploads.
+    region: frankfurt              # closest Render region to Kenya
+    buildCommand: bash build.sh
+    startCommand: gunicorn ksoko.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 60 --access-logfile -
+    healthCheckPath: /healthz/
+    disk:                          # uploaded photos and branding live here and survive deploys
+      name: ksoko-media
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ksoko-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: IP_HASH_SALT
+        generateValue: true
+      - key: MPESA_CALLBACK_SECRET
+        generateValue: true
+      - key: MEDIA_ROOT
+        value: /var/data/media
+      - key: TRUST_PROXY_HEADERS
+        value: "1"
+      - key: TRUSTED_PROXY_COUNT     # check with /manage/network-check/ after the first deploy
+        value: "1"
+      - key: ADMIN_URL               # the Django admin address, e.g. backstage-x7k/ (hard to guess)
+        sync: false
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD   # only needed for the first deploy: delete it afterwards
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+
+databases:
+  - name: ksoko-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: ksoko
+    user: ksoko

@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from . import filters
 from .cod import sync_cod_fee
 from .throttle import limited, too_many
 from .recommend import recent_queries, record_search, recommend_for, personalisation_off
@@ -33,7 +34,7 @@ def home(request):
         "deals": live.filter(listing_type=Listing.Type.BUY, original_price__isnull=False)[:8],
         "auctions": live.filter(listing_type=Listing.Type.AUCTION).order_by("ends_at")[:4],
         "recent": live[:8],
-        "categories": Category.objects.all(),
+        "categories": Category.objects.top(),
         "banners": MediaAsset.objects.filter(is_active=True, placement=MediaAsset.Placement.HOME)[:3],
         "campaigns": Campaign.objects.filter(is_published=True, featured=True, ends_at__gt=timezone.now()).order_by("starts_at")[:3],
         "recs": recs, "rec_mode": rec_mode,
@@ -50,33 +51,28 @@ def listing_list(request):
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q))
     slug = request.GET.get("category", "")
+    current = Category.objects.select_related("parent").filter(slug=slug).first() if slug else None
     if slug:
-        qs = qs.filter(category__slug=slug)
-    kind = request.GET.get("type", "")
-    if kind in Listing.Type.values:
-        qs = qs.filter(listing_type=kind)
-    sorts = {
-        "new": "-created_at",
-        "low": "price",
-        "high": "-price",
-        "ending": F("ends_at").asc(nulls_last=True),
-    }
-    sort = request.GET.get("sort", "new")
-    qs = qs.order_by(sorts.get(sort, "-created_at"))
+        qs = qs.filter(category__in=current.family_ids()) if current else qs.none()   # a main category includes its sub categories
+
+    specs = filters.load_parameters()
+    qs = filters.sort(filters.apply(qs, request.GET, specs), request.GET.get("sort", "new"))
 
     page = Paginator(qs, 12).get_page(request.GET.get("page"))
     if q and request.GET.get("page") in (None, "", "1"):
-        record_search(request, q, Category.objects.filter(slug=slug).first() if slug else None, page.paginator.count)
+        record_search(request, q, current, page.paginator.count)
     suggested = recommend_for(request, 4)[0] if not page.object_list else []
     params = request.GET.copy()
     params.pop("page", None)
-    return render(request, "market/listing_list.html", {
-        "page": page, "q": q, "slug": slug, "kind": kind, "sort": sort,
-        "querystring": params.urlencode(),
-        "suggested": suggested,
-        "current_category": Category.objects.filter(slug=slug).first() if slug else None,
+    context = {
+        "page": page, "q": q, "slug": slug, "querystring": params.urlencode(), "suggested": suggested,
+        "current_category": current,
+        "category_root": (current.parent or current) if current else None,
+        "subcategories": (current.parent or current).children.all() if current else [],
         "list_banner": MediaAsset.objects.filter(is_active=True, placement=MediaAsset.Placement.LISTINGS).first(),
-    })
+    }
+    context.update(filters.toolbar(request, current, specs))
+    return render(request, "market/listing_list.html", context)
 
 
 def listing_detail(request, pk):
@@ -95,6 +91,7 @@ def listing_detail(request, pk):
         "bid_count": listing.bids.count(),
         "watching": user.is_authenticated and Watch.objects.filter(user=user, listing=listing).exists(),
         "similar": recommend_for(request, 4, seed=listing)[0],
+        "attributes": listing.attributes.select_related("parameter", "option"),
         "reviews": listing.reviews.select_related("reviewer")[:10],
         "product_rating": listing.reviews.aggregate(avg=Avg("product_rating"), n=Count("id")),
         "seller_rating": Review.objects.filter(seller=listing.seller).aggregate(avg=Avg("seller_rating"), n=Count("id")),

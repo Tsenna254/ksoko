@@ -32,6 +32,15 @@
     <div class="fld"><label for="id_category">Category</label>{{ form.category }}<div class="err" id="e-category" role="alert">{{ form.category.errors }}</div></div>
     <div class="fld"><label for="id_condition">Condition</label>{{ form.condition }}<div class="err" id="e-condition" role="alert">{{ form.condition.errors }}</div></div>
   </div>
+  <div id="paramrows">
+    {% for p, field in form.param_rows %}
+    <div class="fld paramrow" data-param="{{ p.pk }}" hidden>
+      {% if p.kind == "yesno" %}<label class="chk">{{ field }} {{ p.name }}</label>
+      {% else %}<label for="{{ field.id_for_label }}">{{ p.name }}{% if p.unit %} ({{ p.unit }}){% endif %}{% if p.required %} *{% endif %}</label>{{ field }}{% endif %}
+      {{ field.errors }}
+    </div>{% endfor %}
+  </div>
+  {{ form.param_map|json_script:"param-map" }}
   <div class="fld"><label for="id_description">Description</label>{{ form.description }}
     <div class="help"><div class="err" id="e-description" role="alert">{{ form.description.errors }}</div><span id="dc">0/4000</span></div></div>
 </section>
@@ -172,6 +181,13 @@
     bad("delivery_fee",(!$("id_free_delivery").checked&&!(+$("id_delivery_fee").value>0))?"Enter a delivery fee, or choose free delivery.":"");
     if(!ok){e.preventDefault();var el=first==="photos"?$("drop"):$("id_"+first);el.scrollIntoView({block:"center"});if(first!=="photos")el.focus()}
   });
+  // Show only the product details (brand, size...) that fit the chosen category.
+  var pmap=JSON.parse(document.getElementById("param-map").textContent),catSel=$("id_category");
+  function syncParams(){
+    var ids=(pmap[catSel.value]||[]).map(String);
+    document.querySelectorAll(".paramrow").forEach(function(r){r.hidden=ids.indexOf(r.dataset.param)<0});
+  }
+  catSel.addEventListener("change",syncParams);syncParams();
   syncType();
 })();
 </script>{% endblock %}

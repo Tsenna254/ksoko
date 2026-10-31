@@ -201,3 +201,52 @@ python manage.py runserver
 - Setting a variable for one session: `$env:DJANGO_DEBUG = "1"` (not `DJANGO_DEBUG=1 python ...`).
 - If `migrate` stops with "Set DJANGO_SECRET_KEY..." or "Set DATABASE_URL...", the `.env` file is missing or has no `DJANGO_DEBUG=1` line: run `Copy-Item .env.example .env` again.
 - If `migrate` says "No migrations to apply" but tables are missing, you skipped `makemigrations market`.
+
+
+## Deploying on Render
+
+The project includes everything Render needs: `render.yaml` (a Blueprint that creates the web service, the PostgreSQL database and a disk for uploads), `build.sh` (runs on every deploy), WhiteNoise for the CSS and gunicorn as the web server.
+
+**Before the first deploy (on your computer)**
+1. Create the migration files and commit them, because the server never generates them:
+   ```powershell
+   python manage.py makemigrations market
+   git add market/migrations
+   ```
+2. Put the project in a GitHub or GitLab repository. `.env`, `db.sqlite3` and `media/` are already ignored, so none of them are uploaded.
+
+**Deploy**
+1. Render dashboard > **New** > **Blueprint**, then choose your repository.
+2. Fill in the values it asks for: `ADMIN_URL` (a hard-to-guess admin address such as `backstage-x7k/`), the admin account (`DJANGO_SUPERUSER_USERNAME`, `_EMAIL`, `_PASSWORD`) and your email settings. The secret keys are generated for you.
+3. Wait for the build. `build.sh` collects static files, applies migrations, adds the starter categories and creates your admin account. Afterwards **delete `DJANGO_SUPERUSER_PASSWORD`** from the service's Environment tab.
+4. Open your `https://<name>.onrender.com` address and sign in at `/<ADMIN_URL>login/`: you'll be sent through the site's login and emailed a code. Then open `/manage/network-check/` and follow its instructions if the "address the site will treat as yours" isn't your real IP (set `TRUSTED_PROXY_COUNT`).
+
+**Things to know**
+- **Uploads**: Render wipes the service's files on every deploy. The Blueprint attaches a disk (`MEDIA_ROOT=/var/data/media`), which needs a paid instance and limits you to one instance. For scaling, use S3-compatible storage instead (AWS S3, Cloudflare R2, Backblaze B2): set `AWS_STORAGE_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `AWS_S3_CUSTOM_DOMAIN`) and make the bucket publicly readable. The site refuses to start on Render with neither, so you can't lose photos by accident.
+- **Email**: some hosts block outgoing SMTP. If codes don't arrive, use an email service's HTTPS API instead, e.g. `EMAIL_BACKEND=anymail.backends.brevo.EmailBackend` and `ANYMAIL_BREVO_API_KEY=...` (SendGrid, Mailgun and Postmark work the same way).
+- **M-Pesa and card**: add `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `MPESA_PASSKEY` (and `MPESA_ENV=production` when live) or `FLW_SECRET_KEY` in the Environment tab. Register `https://<your domain>/payments/mpesa/callback/<MPESA_CALLBACK_SECRET>/` with Safaricom (copy the secret from the Environment tab).
+- **Custom domain**: add it in Render, then set `DJANGO_ALLOWED_HOSTS` to your domain and `SITE_URL` to `https://yourdomain`.
+- **Free plans** sleep when idle (the site, its email sending and its housekeeping stop until the next visit), and free databases are temporary. Use paid plans for a real shop.
+- **More traffic**: raise `--workers`/`--threads` in `render.yaml`, add a Render Key Value (Redis) instance and set `REDIS_URL` so rate limits are shared between workers, and move uploads to S3 storage before running more than one instance.
+- **Updating**: change the code, run `makemigrations` locally if models changed, commit everything including `market/migrations/`, and push. Render redeploys; `build.sh` stops with a clear message if migration files are missing.
+
+## Sub categories
+
+Categories now have two levels, for example **Phones > Smartphones**.
+
+- **Django admin > Categories**: open a main category and add sub categories in the *Sub categories* table at the bottom of its page (three blank rows, save to add more). Or press *Add category* and pick a **Parent**. A sub category can't have its own sub categories, and the same name (like "Accessories") can be used under different parents.
+- **On the site**: the search box lists sub categories under their parent; the sell form shows them as "Phones > Smartphones"; browsing a main category also shows its sub categories' items and a row of sub category buttons; campaigns that allow a main category also allow its sub categories.
+- A category with sub categories or listings can't be deleted until they're moved or removed.
+
+After updating run `python manage.py makemigrations market`, then `python manage.py migrate`. Existing categories stay as main categories.
+
+
+## Filter menu, sort menu and product parameters
+
+- **Create the parameters in Django admin > Filter parameters**: give it a name (Brand, Colour, Storage, Dual SIM...), choose its kind (a list of options, a number with a unit like GB, or yes/no), and pick the categories it applies to (leave empty for all; a main category covers its sub categories). For list parameters type the options in *Quick add options* (one per line) or in the table below it. You can mark a parameter **required**, hide it from the filter menu, switch it off, and set its order.
+- **On the product upload page**: sellers see the parameters that fit the category they choose, and fill them in (required ones must be filled). The values show as *Specifications* on the product page and can be edited later.
+- **Filter pop-up** (the *Filters* button on every listing page): price range, condition, format, free delivery, Pay on Delivery, on sale, plus the admin-defined parameters for the category being browsed. Choices are checkboxes, numbers are min/max boxes. Active filters show as buttons you can click to remove, with a *Clear all* link.
+- **Sort menu** (next to Filters): newest, price low to high, price high to low, ending soonest, most bids, top rated, biggest discount.
+- Everything lives in the page address, so filtered and sorted results can be bookmarked and shared.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate`.

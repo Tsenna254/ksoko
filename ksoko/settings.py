@@ -1,4 +1,5 @@
 import os
+import re
 import urllib.parse
 from decimal import Decimal
 from pathlib import Path
@@ -41,9 +42,14 @@ elif not DEBUG and (len(SECRET_KEY) < 40 or SECRET_KEY == "dev-only-change-me"):
     raise ImproperlyConfigured("DJANGO_SECRET_KEY is too short or is the sample value. Generate a new one.")
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1" if DEBUG else "").split(",") if h.strip()]
+RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")      # filled in by Render, e.g. ksoko.onrender.com
+if RENDER_HOST and RENDER_HOST not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_HOST)
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("Set DJANGO_ALLOWED_HOSTS to your domain, e.g. shop.example.com.")
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+if not DEBUG:           # every real host name is also trusted for form posts over HTTPS
+    CSRF_TRUSTED_ORIGINS += [f"https://{h}" for h in ALLOWED_HOSTS if h not in ("localhost", "127.0.0.1") and f"https://{h}" not in CSRF_TRUSTED_ORIGINS]
 
 # Separate secret for hashing IP addresses and session keys, so leaking one key doesn't expose the other.
 IP_HASH_SALT = os.environ.get("IP_HASH_SALT") or SECRET_KEY
@@ -63,7 +69,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "market.middleware.HealthCheckMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -142,7 +150,34 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Customer uploads are stored here. In production serve /media/ from Nginx with the headers in the README.
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
+
+# Where uploaded files (listing photos, logo, promo media) live:
+#   * a folder on a persistent disk (set MEDIA_ROOT), or
+#   * S3-compatible storage such as AWS S3, Cloudflare R2 or Backblaze B2 (set AWS_STORAGE_BUCKET_NAME and friends).
+USE_S3 = bool(os.environ.get("AWS_STORAGE_BUCKET_NAME"))
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage" if DEBUG
+                    else "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+if USE_S3:
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Storage", "OPTIONS": {
+        "bucket_name": os.environ["AWS_STORAGE_BUCKET_NAME"],
+        "region_name": os.environ.get("AWS_S3_REGION_NAME") or None,
+        "endpoint_url": os.environ.get("AWS_S3_ENDPOINT_URL") or None,        # needed for R2 and Backblaze
+        "access_key": os.environ.get("AWS_ACCESS_KEY_ID"),
+        "secret_key": os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        "custom_domain": os.environ.get("AWS_S3_CUSTOM_DOMAIN") or None,
+        "default_acl": None, "querystring_auth": False, "file_overwrite": False,
+        "object_parameters": {"CacheControl": "max-age=86400"},
+    }}
+SERVE_MEDIA_WITH_DJANGO = not USE_S3          # without S3, the site serves /media/ itself, with safe headers
+WHITENOISE_MANIFEST_STRICT = False
+if os.environ.get("RENDER") and not DEBUG and not USE_S3 and not os.environ.get("MEDIA_ROOT"):
+    raise ImproperlyConfigured(
+        "Render wipes files on every deploy, so uploads would be lost. Attach a persistent disk and set MEDIA_ROOT "
+        "to a folder on it (e.g. /var/data/media), or set AWS_STORAGE_BUCKET_NAME for S3 storage.")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -160,6 +195,7 @@ MAX_PROMO_VIDEO_MB = 25
 
 # ---- Cookies, HTTPS and browser protections -----------------------------------------------
 TRUST_PROXY_HEADERS = _flag("TRUST_PROXY_HEADERS")   # only behind a proxy/load balancer you control
+TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))   # proxies between visitors and the site (see /manage/network-check/)
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
@@ -181,7 +217,14 @@ STAFF_SESSION_SECONDS = 2 * 60 * 60
 
 # ---- Email (verification codes) -----------------------------------------------------------
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
-if EMAIL_HOST:
+if os.environ.get("EMAIL_BACKEND"):
+    # e.g. EMAIL_BACKEND=anymail.backends.brevo.EmailBackend plus ANYMAIL_BREVO_API_KEY=...  (HTTP email APIs also work
+    # on hosts that block SMTP). Brevo, SendGrid, Mailgun, Postmark and others are supported by django-anymail.
+    EMAIL_BACKEND = os.environ["EMAIL_BACKEND"]
+    if EMAIL_BACKEND.startswith("anymail."):
+        INSTALLED_APPS.append("anymail")
+        ANYMAIL = {k[len("ANYMAIL_"):]: v for k, v in os.environ.items() if k.startswith("ANYMAIL_")}
+elif EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
     EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
@@ -191,7 +234,7 @@ if EMAIL_HOST:
 elif DEBUG:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"   # codes are printed in the terminal
 else:
-    raise ImproperlyConfigured("Set EMAIL_HOST (and EMAIL_HOST_USER / EMAIL_HOST_PASSWORD): accounts need email codes.")
+    raise ImproperlyConfigured("Set EMAIL_HOST (and EMAIL_HOST_USER / EMAIL_HOST_PASSWORD) or EMAIL_BACKEND: accounts need email codes.")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ksoko <no-reply@localhost>")
 
 # Email queue: every code and reset email is queued, sent in the background and retried on failure.
@@ -226,15 +269,27 @@ MPESA_SHORTCODE = os.environ.get("MPESA_SHORTCODE", "")
 MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY", "")
 MPESA_TRANSACTION_TYPE = os.environ.get("MPESA_TRANSACTION_TYPE", "CustomerPayBillOnline")
 # The callback URL is SITE_URL + /payments/mpesa/callback/<MPESA_CALLBACK_SECRET>/ (a long random string only you and Safaricom know).
-MPESA_CALLBACK_SECRET = os.environ.get("MPESA_CALLBACK_SECRET", "")
+MPESA_CALLBACK_SECRET = re.sub(r"[^A-Za-z0-9_-]", "", os.environ.get("MPESA_CALLBACK_SECRET", ""))   # keep only URL-safe characters
 # Optional: only accept callbacks from these IPs (comma-separated; take them from Safaricom's Daraja documentation).
 MPESA_CALLBACK_IPS = [i.strip() for i in os.environ.get("MPESA_CALLBACK_IPS", "").split(",") if i.strip()]
 MPESA_MANUAL_KIND = os.environ.get("MPESA_MANUAL_KIND", "Paybill")
 MPESA_MANUAL_NUMBER = os.environ.get("MPESA_MANUAL_NUMBER", "")
 
 FLUTTERWAVE_SECRET_KEY = os.environ.get("FLW_SECRET_KEY", "")
-SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8000")
+SITE_URL = os.environ.get("SITE_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "http://127.0.0.1:8000"
 
 # ---- Personalisation and data retention -----------------------------------------------------
 SEARCH_HISTORY_DAYS = 90
 PAGEVIEW_RETENTION_DAYS = 180
+
+
+# ---- Logging: errors go to the console, where Render (and most hosts) collect them ----------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+                "market": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+}

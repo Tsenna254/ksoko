@@ -10,5 +10,5 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         for name in NAMES:
-            _, created = Category.objects.get_or_create(name=name)
+            _, created = Category.objects.get_or_create(name=name, parent=None)
             self.stdout.write(f"{'Created' if created else 'Exists'}: {name}")

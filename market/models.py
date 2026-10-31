@@ -5,7 +5,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
-from django.db.models import Avg, Count, OuterRef, Q, Subquery
+from django.core.exceptions import ValidationError
+from django.db.models import Avg, Count, F, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.urls import reverse
@@ -18,21 +20,67 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MEDIA_EXTS = {".mp4", ".webm"}
 
 
+class CategoryQuerySet(models.QuerySet):
+    def top(self):
+        """Main categories (those that are not sub categories)."""
+        return self.filter(parent__isnull=True)
+
+    def tree(self):
+        """Every category in display order: each main category followed by its sub categories."""
+        return self.select_related("parent").order_by(Coalesce("parent__name", "name"), F("parent").asc(nulls_first=True), "name")
+
+
 class Category(models.Model):
-    name = models.CharField(max_length=60, unique=True)
-    slug = models.SlugField(max_length=70, unique=True, blank=True)
+    """A main category, or (with a parent) a sub category such as Phones > Smartphones. Two levels only."""
+
+    name = models.CharField(max_length=60)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="children",
+        help_text="Leave empty for a main category. Choose a main category here to make this a sub category.",
+    )
+
+    objects = CategoryQuerySet.as_manager()
 
     class Meta:
         ordering = ["name"]
         verbose_name_plural = "categories"
+        constraints = [
+            models.UniqueConstraint(fields=["parent", "name"], name="unique_category_name_per_parent"),
+            models.UniqueConstraint(fields=["name"], condition=Q(parent__isnull=True), name="unique_main_category_name"),
+        ]
+
+    def clean(self):
+        if self.parent_id:
+            if self.pk and self.parent_id == self.pk:
+                raise ValidationError({"parent": "A category can't be its own parent."})
+            if self.parent.parent_id:
+                raise ValidationError({"parent": "Sub categories can only go under a main category, not under another sub category."})
+            if self.pk and self.children.exists():
+                raise ValidationError({"parent": "This category has sub categories of its own, so it can't become a sub category."})
+        twin = Category.objects.filter(parent_id=self.parent_id, name__iexact=self.name.strip()).exclude(pk=self.pk)
+        if self.name and twin.exists():
+            raise ValidationError({"name": "A category with this name already exists here."})
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)
+            base = slugify(f"{self.parent.name} {self.name}" if self.parent_id else self.name)[:120] or "category"
+            slug, n = base, 2
+            while Category.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug, n = f"{base}-{n}", n + 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
+    @property
+    def full_name(self):
+        return f"{self.parent.name} \u203a {self.name}" if self.parent_id else self.name
+
+    def family_ids(self):
+        """This category and its sub categories: what a search for it should include."""
+        return [self.pk, *self.children.values_list("pk", flat=True)]
+
     def __str__(self):
-        return self.name
+        return self.full_name
 
 
 class ListingQuerySet(models.QuerySet):
@@ -741,3 +789,93 @@ class ListingFee(models.Model):
 
     def __str__(self):
         return f"{self.listing} fee KES {self.amount} ({self.status})"
+
+
+# ---- Filter parameters (set up in Django admin, filled in by sellers, used by shoppers) ----------
+
+class FilterParameter(models.Model):
+    """An attribute of products that shoppers can filter by, e.g. Brand, Storage or Waterproof."""
+
+    class Kind(models.TextChoices):
+        CHOICE = "choice", "Pick one from a list (brand, colour...)"
+        NUMBER = "number", "A number (storage, screen size...)"
+        YESNO = "yesno", "Yes or no (dual SIM, waterproof...)"
+
+    name = models.CharField(max_length=60, unique=True)
+    slug = models.SlugField(max_length=70, unique=True, blank=True)
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.CHOICE)
+    unit = models.CharField(max_length=15, blank=True, help_text="Shown after numbers, e.g. GB, inch, kg.")
+    categories = models.ManyToManyField(
+        Category, blank=True, related_name="filter_parameters",
+        help_text="Where this applies. Leave empty for every category. Choosing a main category covers its sub categories too.",
+    )
+    required = models.BooleanField(default=False, help_text="Sellers must fill this in when listing in a category it applies to.")
+    show_in_filter = models.BooleanField("Show in the filter menu", default=True)
+    is_active = models.BooleanField(default=True, help_text="Untick to hide it everywhere without deleting it.")
+    sort_order = models.PositiveIntegerField(default=0, help_text="Lower numbers show first.")
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name)[:60] or "filter"
+            slug, n = base, 2
+            while FilterParameter.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug, n = f"{base}-{n}", n + 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def applies_to(self, category):
+        """Does this parameter belong with the given category (None means no category chosen yet)?"""
+        ids = {c.pk for c in self.categories.all()}          # uses prefetched categories when available
+        if not ids:
+            return True
+        return category is not None and (category.pk in ids or category.parent_id in ids)
+
+
+class FilterOption(models.Model):
+    parameter = models.ForeignKey(FilterParameter, on_delete=models.CASCADE, related_name="options")
+    value = models.CharField(max_length=60)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "value"]
+        constraints = [models.UniqueConstraint(fields=["parameter", "value"], name="unique_filter_option")]
+
+    def clean(self):
+        self.value = self.value.strip()
+        twin = FilterOption.objects.filter(parameter_id=self.parameter_id, value__iexact=self.value).exclude(pk=self.pk)
+        if self.parameter_id and self.value and twin.exists():
+            raise ValidationError({"value": "That option already exists."})
+
+    def __str__(self):
+        return self.value
+
+
+class ListingAttribute(models.Model):
+    """The value a seller gave for one filter parameter on one listing."""
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="attributes")
+    parameter = models.ForeignKey(FilterParameter, on_delete=models.CASCADE, related_name="values")
+    option = models.ForeignKey(FilterOption, null=True, blank=True, on_delete=models.CASCADE, related_name="+")
+    number = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    yes = models.BooleanField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["listing", "parameter"], name="unique_listing_parameter")]
+
+    @property
+    def display_value(self):
+        if self.option_id:
+            return self.option.value
+        if self.number is not None:
+            text = f"{self.number.normalize():f}"
+            return f"{text} {self.parameter.unit}".strip()
+        return "Yes" if self.yes else ""
+
+    def __str__(self):
+        return f"{self.parameter.name}: {self.display_value}"

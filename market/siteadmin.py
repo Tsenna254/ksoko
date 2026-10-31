@@ -1,5 +1,7 @@
 """Staff-only pages for branding, promotional media and campaigns."""
+from django.conf import settings
 from django.contrib import messages
+from django.http import HttpResponse
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -102,3 +104,21 @@ def entry_decision(request, pk, action):
         messages.info(request, "Entry rejected.")
     audit.log(request, f"campaign.entry.{action}", entry.pk, entry.campaign.name)
     return redirect("campaign_edit", pk=entry.campaign_id)
+
+
+@staff_member_required
+def network_check(request):
+    """Shows what the site sees for your connection, so you can set TRUSTED_PROXY_COUNT correctly."""
+    from .security import client_ip
+    meta = request.META
+    lines = [
+        f"Connection address (REMOTE_ADDR): {meta.get('REMOTE_ADDR', '')}",
+        f"X-Forwarded-For header: {meta.get('HTTP_X_FORWARDED_FOR', '(none)')}",
+        f"X-Forwarded-Proto header: {meta.get('HTTP_X_FORWARDED_PROTO', '(none)')}",
+        f"Proxy headers trusted: {settings.TRUST_PROXY_HEADERS}   proxies counted from the right: {settings.TRUSTED_PROXY_COUNT}",
+        f"Address the site will treat as yours: {client_ip(request)}",
+        "",
+        "Search 'what is my IP' from this same device. If it differs from the line above, raise TRUSTED_PROXY_COUNT by one",
+        "(or lower it if the address shown is more than yours) and check again.",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")

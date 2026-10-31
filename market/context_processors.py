@@ -2,7 +2,7 @@ from .models import Category, SiteSettings
 
 
 def categories(request):
-    return {"nav_categories": Category.objects.all()}
+    return {"nav_categories": Category.objects.top().prefetch_related("children")}
 
 
 def cart(request):

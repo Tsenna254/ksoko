@@ -36,6 +36,7 @@ urlpatterns = [
     path("my/campaigns/<slug:slug>/join/", campaigns.campaign_join, name="campaign_join"),
     path("campaigns/<slug:slug>/", campaigns.campaign_detail, name="campaign_detail"),
     path("manage/branding/", siteadmin.branding, name="manage_branding"),
+    path("manage/network-check/", siteadmin.network_check, name="network_check"),
     path("manage/media/", siteadmin.media, name="manage_media"),
     path("manage/media/<int:pk>/<str:action>/", siteadmin.media_action, name="media_action"),
     path("manage/campaigns/", siteadmin.campaign_list, name="manage_campaigns"),

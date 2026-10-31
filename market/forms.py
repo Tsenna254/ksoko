@@ -15,7 +15,7 @@ from django.core.files.storage import default_storage
 from PIL import Image
 
 from . import emailer
-from .models import Campaign, Listing, ListingFee, ListingImage, MediaAsset, Payment, Review, SiteSettings
+from .models import Campaign, Category, FilterParameter, Listing, ListingAttribute, ListingFee, ListingImage, MediaAsset, Payment, Review, SiteSettings
 
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 DURATIONS = [("1", "1 day"), ("3", "3 days"), ("5", "5 days"), ("7", "7 days"), ("10", "10 days")]
@@ -64,6 +64,7 @@ class ListingForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         f = self.fields
+        f["category"].queryset = Category.objects.tree()      # main categories, each followed by its sub categories
         f["category"].empty_label = "Choose a category"
         f["delivery_fee"].required = False
         pct = f"{settings.COD_LISTING_FEE_PERCENT:f}"
@@ -86,6 +87,54 @@ class ListingForm(forms.ModelForm):
                 f["original_price"].disabled = True
         else:
             del f["delete_images"]
+        self._build_param_fields()
+
+    # ---- filter parameters defined in Django admin ----
+    def _build_param_fields(self):
+        """One optional field per active parameter. The page shows only those that fit the chosen category."""
+        self.params = list(FilterParameter.objects.filter(is_active=True).prefetch_related("options", "categories"))
+        existing = {a.parameter_id: a for a in self.instance.attributes.all()} if self.instance.pk else {}
+        for p in self.params:
+            name = f"param_{p.pk}"
+            label = f"{p.name} ({p.unit})" if p.unit else p.name
+            if p.kind == FilterParameter.Kind.CHOICE:
+                self.fields[name] = forms.ChoiceField(
+                    label=label, required=False, choices=[("", "Choose...")] + [(str(o.pk), o.value) for o in p.options.all()])
+                if p.pk in existing and existing[p.pk].option_id:
+                    self.initial[name] = str(existing[p.pk].option_id)
+            elif p.kind == FilterParameter.Kind.NUMBER:
+                self.fields[name] = forms.DecimalField(label=label, required=False, min_value=0, max_digits=12, decimal_places=2)
+                if p.pk in existing:
+                    self.initial[name] = existing[p.pk].number
+            else:
+                self.fields[name] = forms.BooleanField(label=label, required=False)
+                if p.pk in existing:
+                    self.initial[name] = bool(existing[p.pk].yes)
+        self.param_rows = [(p, self[f"param_{p.pk}"]) for p in self.params]
+
+    @property
+    def param_map(self):
+        """{category id: [parameter ids]} so the page can show the right fields as the category changes."""
+        return {str(c.pk): [p.pk for p in self.params if p.applies_to(c)] for c in Category.objects.all()}
+
+    def relevant_params(self, category):
+        return [p for p in self.params if category is not None and p.applies_to(category)]
+
+    def _save_params(self, listing):
+        relevant = {p.pk for p in self.relevant_params(listing.category)}
+        for p in self.params:
+            value = self.cleaned_data.get(f"param_{p.pk}")
+            if p.pk in relevant and value not in (None, "", False):
+                values = {"option": None, "number": None, "yes": None}
+                if p.kind == FilterParameter.Kind.CHOICE:
+                    values["option"] = p.options.get(pk=int(value))
+                elif p.kind == FilterParameter.Kind.NUMBER:
+                    values["number"] = value
+                else:
+                    values["yes"] = True
+                ListingAttribute.objects.update_or_create(listing=listing, parameter=p, defaults=values)
+            else:                                   # blank, or no longer fits the category
+                ListingAttribute.objects.filter(listing=listing, parameter=p).delete()
 
     def clean_title(self):
         title = self.cleaned_data["title"].strip()
@@ -141,6 +190,14 @@ class ListingForm(forms.ModelForm):
                 self.add_error("images", "Add at least one photo.")
             elif total > settings.MAX_LISTING_IMAGES:
                 self.add_error("images", f"A listing can have {settings.MAX_LISTING_IMAGES} photos at most.")
+
+        relevant = {p.pk for p in self.relevant_params(data.get("category"))}
+        for p in self.params:
+            name = f"param_{p.pk}"
+            if p.pk not in relevant:
+                data.pop(name, None)                # not for this category: ignore whatever was sent
+            elif p.required and p.kind != FilterParameter.Kind.YESNO and data.get(name) in (None, ""):
+                self.add_error(name, f"Please fill in {p.name} for this category.")
         return data
 
     @transaction.atomic
@@ -159,6 +216,7 @@ class ListingForm(forms.ModelForm):
             image.delete()
         for f in self.cleaned_data.get("images") or []:
             ListingImage.objects.create(listing=listing, image=f)
+        self._save_params(listing)
         return listing
 
 
@@ -367,6 +425,7 @@ class CampaignForm(forms.ModelForm):
         for name in ("starts_at", "ends_at", "join_deadline"):
             self.fields[name].input_formats = [DT_FORMAT]
         self.fields["banner"].widget.attrs["accept"] = "image/jpeg,image/png,image/webp"
+        self.fields["categories"].queryset = Category.objects.tree()
 
     def clean(self):
         data = super().clean()

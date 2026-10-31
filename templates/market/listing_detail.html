@@ -12,7 +12,7 @@
   </div>
 
   <div class="panel">
-    <a class="meta" href="{% url 'listing_list' %}?category={{ listing.category.slug }}">{{ listing.category.name }}</a>
+    <a class="meta" href="{% url 'listing_list' %}?category={{ listing.category.slug }}">{{ listing.category.full_name }}</a>
     <h1>{{ listing.title }}</h1>
     <p class="cond">Condition: {{ listing.get_condition_display }}</p>
     <p class="ratingline">
@@ -73,6 +73,10 @@
     </dl>
   </div>
 </div>
+
+{% if attributes %}<section class="sec"><h2>Specifications</h2>
+  <dl class="facts specs">{% for a in attributes %}<dt>{{ a.parameter.name }}</dt><dd>{{ a.display_value }}</dd>{% endfor %}</dl>
+</section>{% endif %}
 
 <section class="sec">
   <h2>Description</h2>

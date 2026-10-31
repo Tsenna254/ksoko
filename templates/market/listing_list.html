@@ -1,25 +1,29 @@
 {% extends "base.html" %}
-{% block title %}{% if q %}Results for {{ q }}{% elif current_category %}{{ current_category.name }}{% else %}All listings{% endif %}{% endblock %}
+{% block title %}{% if q %}Results for {{ q }}{% elif current_category %}{{ current_category.full_name }}{% else %}All listings{% endif %}{% endblock %}
 {% block content %}
 {% if list_banner %}{% include "market/_promo.html" with m=list_banner %}{% endif %}
 <div class="hd" style="margin-top:28px">
-  <h2>{% if q %}Results for “{{ q }}”{% elif current_category %}{{ current_category.name }}{% else %}All listings{% endif %} ({{ page.paginator.count }})</h2>
-  <form method="get" class="filters">
-    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-    {% if slug %}<input type="hidden" name="category" value="{{ slug }}">{% endif %}
-    <select name="type" aria-label="Format" onchange="this.form.submit()">
-      <option value="">All formats</option>
-      <option value="buy" {% if kind == "buy" %}selected{% endif %}>Buy it now</option>
-      <option value="auction" {% if kind == "auction" %}selected{% endif %}>Auction</option>
-    </select>
-    <select name="sort" aria-label="Sort" onchange="this.form.submit()">
-      <option value="new" {% if sort == "new" %}selected{% endif %}>Newest</option>
-      <option value="low" {% if sort == "low" %}selected{% endif %}>Price: low to high</option>
-      <option value="high" {% if sort == "high" %}selected{% endif %}>Price: high to low</option>
-      <option value="ending" {% if sort == "ending" %}selected{% endif %}>Ending soonest</option>
-    </select>
-  </form>
+  <h2>{% if q %}Results for “{{ q }}”{% elif current_category %}{{ current_category.full_name }}{% else %}All listings{% endif %} ({{ page.paginator.count }})</h2>
+  <div class="toolbar">
+    <button type="button" class="solid sm" data-open-filters aria-haspopup="dialog">Filters{% if filter_count %} <b class="count">{{ filter_count }}</b>{% endif %}</button>
+    <details class="sortmenu" id="sortmenu">
+      <summary>Sort: <strong>{{ sort_label }}</strong></summary>
+      <ul>{% for s in sort_links %}<li><a href="{{ s.url }}"{% if s.active %} aria-current="true"{% endif %}>{{ s.label }}</a></li>{% endfor %}</ul>
+    </details>
+  </div>
 </div>
+
+{% if chips %}<div class="chips activechips">
+  {% for c in chips %}<a class="chip on" href="{{ c.url }}" title="Remove this filter">{{ c.label }} ×</a>{% endfor %}
+  <a class="linkbtn" href="{{ clear_url }}">Clear all</a>
+</div>{% endif %}
+
+{% if subcategories %}
+<div class="chips" aria-label="Sub categories">
+  <a class="chip{% if current_category == category_root %} on{% endif %}" href="?category={{ category_root.slug }}">All {{ category_root.name }}</a>
+  {% for sub in subcategories %}<a class="chip{% if sub == current_category %} on{% endif %}" href="?category={{ sub.slug }}">{{ sub.name }}</a>{% endfor %}
+</div>{% endif %}
+
 {% if page.object_list %}
 <div class="grid">{% for l in page.object_list %}{% include "market/_card.html" %}{% endfor %}</div>
 <nav class="pager" aria-label="Pages">
@@ -27,6 +31,18 @@
   <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
   {% if page.has_next %}<a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
 </nav>
-{% else %}<p class="empty">No listings match your search. Check the spelling or try a broader word.</p>
+{% else %}<p class="empty">No listings match{% if chips %} these filters. <a href="{{ clear_url }}">Clear all filters</a>{% else %} your search. Check the spelling or try a broader word{% endif %}.</p>
 {% if suggested %}<section class="sec"><div class="hd"><h2>You might like</h2></div><div class="grid">{% for l in suggested %}{% include "market/_card.html" %}{% endfor %}</div></section>{% endif %}{% endif %}
+
+{% include "market/_filters.html" %}
 {% endblock %}
+{% block scripts %}<script>
+(function(){
+  var dlg=document.getElementById("filterdlg");
+  document.querySelectorAll("[data-open-filters]").forEach(function(b){b.addEventListener("click",function(){if(dlg.showModal)dlg.showModal();else dlg.setAttribute("open","")})});
+  dlg.querySelectorAll("[data-close]").forEach(function(b){b.addEventListener("click",function(){dlg.close()})});
+  dlg.addEventListener("click",function(e){if(e.target===dlg)dlg.close()});     // click the dimmed area to close
+  var sm=document.getElementById("sortmenu");
+  document.addEventListener("click",function(e){if(sm.open&&!sm.contains(e.target))sm.open=false});
+})();
+</script>{% endblock %}

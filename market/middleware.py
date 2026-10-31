@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.core.cache import cache
+from django.http import HttpResponse
 from django.shortcuts import redirect
 
 from . import maintenance
@@ -84,4 +85,16 @@ class MaintenanceMiddleware:
                     task()
                 except Exception:
                     pass
+        return self.get_response(request)
+
+
+class HealthCheckMiddleware:
+    """Answers the host's health check (/healthz/) before anything else, so it never trips host or HTTPS checks."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.path == "/healthz/":
+            return HttpResponse("ok", content_type="text/plain")
         return self.get_response(request)

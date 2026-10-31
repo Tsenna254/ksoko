@@ -140,3 +140,109 @@ class PayOnDeliveryTests(TestCase):
             Payment.objects.create(user=self.buyer, method="cod", status="rejected", amount=self.D("500"))
         CartItem.objects.create(user=self.buyer, listing=self.fresh(self.item), quantity=1)
         self.assertIn("switched off", cod_blocker(self.buyer, cart_summary(self.buyer)))
+
+
+class SubcategoryTests(TestCase):
+    def setUp(self):
+        from market.models import Category
+        self.Category = Category
+        self.phones = Category.objects.create(name="Phones")
+
+    def test_sub_category_gets_its_own_slug_and_full_name(self):
+        sub = self.Category.objects.create(name="Smartphones", parent=self.phones)
+        self.assertEqual(sub.slug, "phones-smartphones")
+        self.assertEqual(str(sub), "Phones \u203a Smartphones")
+
+    def test_same_sub_category_name_can_sit_under_different_parents(self):
+        fashion = self.Category.objects.create(name="Fashion")
+        self.Category.objects.create(name="Accessories", parent=self.phones)
+        other = self.Category.objects.create(name="Accessories", parent=fashion)
+        self.assertNotEqual(other.slug, "phones-accessories")
+
+    def test_only_two_levels_are_allowed(self):
+        from django.core.exceptions import ValidationError
+        sub = self.Category.objects.create(name="Smartphones", parent=self.phones)
+        with self.assertRaises(ValidationError):
+            self.Category(name="Budget", parent=sub).full_clean()
+
+    def test_duplicate_names_are_rejected_politely(self):
+        from django.core.exceptions import ValidationError
+        self.Category.objects.create(name="Smartphones", parent=self.phones)
+        with self.assertRaises(ValidationError):
+            self.Category(name="smartphones", parent=self.phones).full_clean()
+
+    def test_searching_a_main_category_includes_its_sub_categories(self):
+        from decimal import Decimal
+        from market.models import Listing
+        seller = get_user_model().objects.create_user("seller", "s@example.com", "a-long-test-password-1")
+        sub = self.Category.objects.create(name="Smartphones", parent=self.phones)
+        Listing.objects.create(seller=seller, category=sub, title="Budget phone", description="A decent phone for everyday use.", price=Decimal("9000"))
+        self.assertIn(sub.pk, self.phones.family_ids())
+        response = self.client.get(reverse("listing_list") + "?category=phones")
+        self.assertContains(response, "Budget phone")
+
+
+class FilterAndSortTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+        from market.models import Category, FilterOption, FilterParameter, Listing, ListingAttribute
+        self.D = Decimal
+        seller = get_user_model().objects.create_user("seller", "s@example.com", "a-long-test-password-1")
+        phones = Category.objects.create(name="Phones")
+        shoes = Category.objects.create(name="Shoes")
+        self.brand = FilterParameter.objects.create(name="Brand", kind="choice")
+        self.brand.categories.add(phones)
+        self.samsung = FilterOption.objects.create(parameter=self.brand, value="Samsung")
+        self.apple = FilterOption.objects.create(parameter=self.brand, value="Apple")
+        self.storage = FilterParameter.objects.create(name="Storage", kind="number", unit="GB")
+        self.storage.categories.add(phones)
+        make = lambda title, cat, price, **kw: Listing.objects.create(
+            seller=seller, category=cat, title=title, description="A listing description long enough.", price=Decimal(price), **kw)
+        self.a = make("Galaxy", phones, "30000")
+        self.b = make("iPhone", phones, "90000")
+        self.c = make("Sneakers", shoes, "5000", condition="used")
+        ListingAttribute.objects.create(listing=self.a, parameter=self.brand, option=self.samsung)
+        ListingAttribute.objects.create(listing=self.b, parameter=self.brand, option=self.apple)
+        ListingAttribute.objects.create(listing=self.a, parameter=self.storage, number=Decimal("128"))
+        ListingAttribute.objects.create(listing=self.b, parameter=self.storage, number=Decimal("512"))
+
+    def titles(self, query):
+        response = self.client.get(reverse("listing_list") + query)
+        self.assertEqual(response.status_code, 200)
+        return [l.title for l in response.context["page"].object_list]
+
+    def test_admin_defined_choice_filter(self):
+        self.assertEqual(self.titles(f"?category=phones&p{self.brand.pk}={self.samsung.pk}"), ["Galaxy"])
+
+    def test_number_range_filter(self):
+        self.assertEqual(self.titles(f"?category=phones&p{self.storage.pk}_min=256"), ["iPhone"])
+
+    def test_built_in_filters(self):
+        self.assertEqual(self.titles("?min_price=10000&max_price=50000"), ["Galaxy"])
+        self.assertEqual(self.titles("?cond=used"), ["Sneakers"])
+
+    def test_sort_menu_orders_by_price(self):
+        self.assertEqual(self.titles("?sort=low"), ["Sneakers", "Galaxy", "iPhone"])
+        self.assertEqual(self.titles("?sort=high"), ["iPhone", "Galaxy", "Sneakers"])
+
+    def test_filter_menu_only_offers_parameters_for_the_browsed_category(self):
+        phones = self.client.get(reverse("listing_list") + "?category=phones")
+        self.assertEqual([s["param"].name for s in phones.context["filter_sections"]], ["Brand", "Storage"])
+        shoes = self.client.get(reverse("listing_list") + "?category=shoes")
+        self.assertEqual(shoes.context["filter_sections"], [])
+
+    def test_upload_form_shows_fields_for_the_right_category_only(self):
+        from market.forms import ListingForm
+        form = ListingForm()
+        phones_id = str(self.a.category_id)
+        shoes_id = str(self.c.category_id)
+        self.assertIn(self.brand.pk, form.param_map[phones_id])
+        self.assertNotIn(self.brand.pk, form.param_map[shoes_id])
+
+    def test_a_required_parameter_must_be_filled_in(self):
+        from market.forms import ListingForm
+        self.brand.required = True
+        self.brand.save()
+        form = ListingForm(data={"title": "Test phone", "category": self.a.category_id})
+        form.is_valid()
+        self.assertIn(f"param_{self.brand.pk}", form.errors)
