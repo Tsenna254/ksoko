@@ -30,13 +30,23 @@ def _flag(name, default="0"):
     return os.environ.get(name, default) == "1"
 
 
+def _hint():
+    """Extra help appended to start-up errors, because the fix depends on where the site is running."""
+    if os.environ.get("RENDER"):
+        return (" You're on Render: create a PostgreSQL database (Dashboard > New > PostgreSQL), then in this web service's "
+                "Environment tab add DATABASE_URL with the database's Internal Database URL. The render.yaml Blueprint does this for you.")
+    return (" If you're working on your own computer, development mode is off: copy .env.example to .env "
+            "(PowerShell: Copy-Item .env.example .env) so it contains DJANGO_DEBUG=1. A DJANGO_DEBUG value already set in your "
+            "terminal wins over .env, so also run: Remove-Item Env:DJANGO_DEBUG (PowerShell) or unset DJANGO_DEBUG (Mac/Linux).")
+
+
 # ---- Core, and refusing to start with unsafe production settings -------------------------
 DEBUG = _flag("DJANGO_DEBUG")          # OFF unless you ask for it. Local development: DJANGO_DEBUG=1 in .env
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
     if not DEBUG:
-        raise ImproperlyConfigured("Set DJANGO_SECRET_KEY to a long random value (see README).")
+        raise ImproperlyConfigured("Set DJANGO_SECRET_KEY to a long random value (see README)." + _hint())
     SECRET_KEY = "dev-only-change-me"
 elif not DEBUG and (len(SECRET_KEY) < 40 or SECRET_KEY == "dev-only-change-me"):
     raise ImproperlyConfigured("DJANGO_SECRET_KEY is too short or is the sample value. Generate a new one.")
@@ -46,7 +56,7 @@ RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")      # filled in by
 if RENDER_HOST and RENDER_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(RENDER_HOST)
 if not DEBUG and not ALLOWED_HOSTS:
-    raise ImproperlyConfigured("Set DJANGO_ALLOWED_HOSTS to your domain, e.g. shop.example.com.")
+    raise ImproperlyConfigured("Set DJANGO_ALLOWED_HOSTS to your domain, e.g. shop.example.com." + _hint())
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 if not DEBUG:           # every real host name is also trusted for form posts over HTTPS
     CSRF_TRUSTED_ORIGINS += [f"https://{h}" for h in ALLOWED_HOSTS if h not in ("localhost", "127.0.0.1") and f"https://{h}" not in CSRF_TRUSTED_ORIGINS]
@@ -120,7 +130,7 @@ def _database():
         }
     if not DEBUG and not _flag("ALLOW_SQLITE_IN_PRODUCTION"):
         # SQLite cannot lock rows, so two shoppers could buy the last item, or two bids could collide.
-        raise ImproperlyConfigured("Set DATABASE_URL to a PostgreSQL database for production (see README).")
+        raise ImproperlyConfigured("Production mode needs a PostgreSQL database: set DATABASE_URL (postgres://user:password@host:5432/dbname)." + _hint())
     return {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}
 
 
@@ -234,7 +244,7 @@ elif EMAIL_HOST:
 elif DEBUG:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"   # codes are printed in the terminal
 else:
-    raise ImproperlyConfigured("Set EMAIL_HOST (and EMAIL_HOST_USER / EMAIL_HOST_PASSWORD) or EMAIL_BACKEND: accounts need email codes.")
+    raise ImproperlyConfigured("Set EMAIL_HOST (and EMAIL_HOST_USER / EMAIL_HOST_PASSWORD) or EMAIL_BACKEND: accounts need email codes." + _hint())
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ksoko <no-reply@localhost>")
 
 # Email queue: every code and reset email is queued, sent in the background and retried on failure.
@@ -290,9 +300,6 @@ LOGGING = {
     "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
-    "loggers": {
-        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
-        "market": {"handlers": ["console"], "level": "INFO", "propagate": False},
-    },
+    "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+                "market": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }

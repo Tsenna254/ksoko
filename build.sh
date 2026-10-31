@@ -22,6 +22,8 @@ python manage.py collectstatic --noinput
 python manage.py migrate --noinput
 python manage.py seed_categories
 
+python manage.py doctor
+
 # First deploy only: create the admin account from environment variables (then delete the password variable).
 if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ] && [ -n "$DJANGO_SUPERUSER_EMAIL" ]; then
   python manage.py createsuperuser --noinput || echo "Admin account already exists, skipping."

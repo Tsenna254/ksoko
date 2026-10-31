@@ -250,3 +250,28 @@ After updating run `python manage.py makemigrations market`, then `python manage
 - Everything lives in the page address, so filtered and sorted results can be bookmarked and shared.
 
 Run `python manage.py makemigrations market`, then `python manage.py migrate`.
+
+
+## Troubleshooting start-up errors
+
+The site refuses to start in production mode with an unsafe or incomplete setup, and the error says what is missing.
+
+- **"Production mode needs a PostgreSQL database: set DATABASE_URL"** (or a similar message about `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` or `EMAIL_HOST`)
+  - *On your own computer* this means development mode is off. Make sure a `.env` file exists next to `manage.py` with the line `DJANGO_DEBUG=1` (`Copy-Item .env.example .env` in PowerShell). A `DJANGO_DEBUG` variable already set in your terminal overrides `.env`; check with `echo $env:DJANGO_DEBUG` and clear it with `Remove-Item Env:DJANGO_DEBUG`.
+  - *On Render* it means the web service has no database linked: create a PostgreSQL database on Render and add its **Internal Database URL** as `DATABASE_URL` in the service's Environment tab (or deploy with `render.yaml`, which does it for you).
+
+
+### Render shows "Server Error (500)"
+
+A 500 means the code crashed; Render's **Logs** tab says why. Open your service > **Logs**, find the last line starting with `Traceback`, and read the final line of it. The common ones:
+
+| The last line of the error says | What it means and how to fix it |
+|---|---|
+| `relation "market_..." does not exist` or `no such table` | The database tables weren't created. The build runs `migrate`; check the build log for failures, make sure `market/migrations/` is committed, then redeploy. |
+| `OperationalError` / `could not connect to server` | `DATABASE_URL` is wrong. Use the database's **Internal** URL, and keep the web service and database in the same region. |
+| `Missing staticfiles manifest entry` | `collectstatic` didn't run: the service's Build Command must be `bash build.sh`. |
+| `redis.exceptions.ConnectionError` | `REDIS_URL` is wrong. Rate limiting now switches itself off instead of crashing; fix or delete `REDIS_URL`. |
+| `botocore` / `AccessDenied` / `NoSuchBucket` | The `AWS_*` upload-storage settings are wrong, or the bucket isn't readable. |
+| `NoReverseMatch`, `TemplateSyntaxError`, `AttributeError` on one page | A code or template bug on that page. Copy the traceback to the developer. |
+
+Every deploy now runs `python manage.py doctor`, which checks the database, migrations, tables, static files, cache, uploads and email, prints PASS/WARN/FAIL for each in the build log, and stops the deploy if something essential is broken. You can run it yourself any time (Render Shell, or locally). The health check also fails (503) when the database or tables aren't ready, so Render keeps the previous working version running instead of switching to a broken one. Visitors now see a friendly error page instead of a bare "Server Error (500)".

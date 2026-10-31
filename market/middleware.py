@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
@@ -6,13 +8,14 @@ from django.http import HttpResponse
 from django.shortcuts import redirect
 
 from . import maintenance
-from .models import PageView
+from .models import PageView, SiteSettings
 from .recommend import BOTS, visitor_id
 from .security import privacy_hash
 from .throttle import limited
 from .verification import is_email_verified
 
 SKIP = ("/static/", "/media/", "/favicon.ico")
+logger = logging.getLogger(__name__)
 
 
 class AccountGuardMiddleware:
@@ -96,5 +99,10 @@ class HealthCheckMiddleware:
 
     def __call__(self, request):
         if request.path == "/healthz/":
+            try:
+                SiteSettings.objects.exists()       # fails if the database is down or migrations haven't been applied
+            except Exception as exc:
+                logger.error("Health check failed, so Render will not send traffic here: %s", exc)
+                return HttpResponse("not ready: database or migrations", status=503, content_type="text/plain")
             return HttpResponse("ok", content_type="text/plain")
         return self.get_response(request)

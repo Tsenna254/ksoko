@@ -1,19 +1,28 @@
 """Fixed-window rate limiting on top of Django's cache. Use Redis in production so all workers share counts."""
+import logging
+
 from django.core.cache import cache
 from django.shortcuts import render
 
 from .security import ip_hash
 
 
+logger = logging.getLogger(__name__)
+
+
 def hit(scope, ident, limit, window):
     """Count one attempt. Returns True while the caller is within the limit."""
     key = f"thr:{scope}:{ident}"
-    if cache.add(key, 1, window):
-        return True
     try:
-        return cache.incr(key) <= limit
-    except ValueError:                      # the key expired between add() and incr()
-        cache.set(key, 1, window)
+        if cache.add(key, 1, window):
+            return True
+        try:
+            return cache.incr(key) <= limit
+        except ValueError:                  # the key expired between add() and incr()
+            cache.set(key, 1, window)
+            return True
+    except Exception as exc:                # cache unreachable: keep the site up and say so in the logs
+        logger.error("Rate limiting is off because the cache failed (check REDIS_URL): %s", exc)
         return True
 
 

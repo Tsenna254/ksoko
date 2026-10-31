@@ -88,7 +88,7 @@ class PayOnDeliveryTests(TestCase):
         payment = Payment.objects.create(user=listing.seller, purpose="listing_fee", method="mpesa", amount=fee.amount)
         fee.payment = payment
         fee.save()
-        payment.mark_paid(f"QGH7ABC{payment.pk}")
+        payment.mark_paid("QGH7ABC123")
         payment.confirm(self.staff)
 
     def fresh(self, listing):
