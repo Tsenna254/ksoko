@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{% if is_register %}Confirm your email{% else %}Verify it's you{% endif %}{% endblock %}
-{% block head %}{% if delivery == "queued" or delivery == "sending" %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block head %}{% if delivery == "queued" or delivery == "sending" %}<meta http-equiv="refresh" content="300">{% endif %}{% endblock %}
 {% block content %}
 <div class="formcard narrow">
   <h1>{% if is_register %}Confirm your email{% else %}Verify it's you{% endif %}</h1>
