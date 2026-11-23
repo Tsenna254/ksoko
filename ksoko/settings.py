@@ -157,6 +157,9 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Email
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "Ksoko <noreply@ksoko.com>"
 
 # Customer uploads are stored here. In production serve /media/ from Nginx with the headers in the README.
 MEDIA_URL = "media/"
@@ -242,7 +245,8 @@ elif EMAIL_HOST:
     EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
     EMAIL_TIMEOUT = 15
 elif DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"   # codes are printed in the terminal
+    EMAIL_BACKEND =  "django.core.mail.backends.console.EmailBackend"   # codes are printed in the terminal
+    DEFAULT_FROM_EMAIL = "Ksoko <noreply@ksoko.com>"
 else:
     raise ImproperlyConfigured("Set EMAIL_HOST (and EMAIL_HOST_USER / EMAIL_HOST_PASSWORD) or EMAIL_BACKEND: accounts need email codes." + _hint())
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ksoko <no-reply@localhost>")
