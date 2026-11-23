@@ -238,12 +238,7 @@ if os.environ.get("EMAIL_BACKEND"):
     EMAIL_BACKEND = os.environ["EMAIL_BACKEND"]
     if EMAIL_BACKEND.startswith("anymail."):
         INSTALLED_APPS.append("anymail")
-ANYMAIL = {
-    "BREVO_API_KEY": os.environ.get("BREVO_API_KEY"),
-}
-
-DEFAULT_FROM_EMAIL = "Ksoko < annest.mwangi@gmail.com>"
-
+        ANYMAIL = {"BREVO_API_KEY": os.environ.get("BREVO_API_KEY", "")}
 elif EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
