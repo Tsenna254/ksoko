@@ -76,6 +76,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "market",
+    "amymail",
+    
 ]
 
 MIDDLEWARE = [
@@ -158,7 +160,7 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # Email
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 DEFAULT_FROM_EMAIL = "Ksoko <noreply@ksoko.com>"
 
 # Customer uploads are stored here. In production serve /media/ from Nginx with the headers in the README.
@@ -236,7 +238,12 @@ if os.environ.get("EMAIL_BACKEND"):
     EMAIL_BACKEND = os.environ["EMAIL_BACKEND"]
     if EMAIL_BACKEND.startswith("anymail."):
         INSTALLED_APPS.append("anymail")
-        ANYMAIL = {k[len("ANYMAIL_"):]: v for k, v in os.environ.items() if k.startswith("ANYMAIL_")}
+ANYMAIL = {
+    "BREVO_API_KEY": os.environ.get("BREVO_API_KEY"),
+}
+
+DEFAULT_FROM_EMAIL = "Ksoko < annest.mwangi@gmail.com>"
+
 elif EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
