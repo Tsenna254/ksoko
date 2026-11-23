@@ -5,6 +5,7 @@
   * Staff accounts need a code on every sign-in.
 Nobody is logged in until the code is accepted, so a stolen password alone is not enough.
 """
+import os
 import time
 from urllib.parse import urlencode
 
@@ -96,6 +97,11 @@ def login_view(request):
 
 def _begin_login(request, user, nxt):
     security, _ = AccountSecurity.objects.get_or_create(user=user)
+    # TEMPORARY: lets superusers in without a code while email delivery is being fixed.
+    # Only active when the SUPERUSER_SKIP_CODE=1 environment variable is set. Remove it afterwards.
+    if user.is_superuser and os.environ.get("SUPERUSER_SKIP_CODE") == "1":
+        _finish_login(request, user)
+        return redirect(nxt or "home")
     if not user.email:
         messages.error(request, "This account has no email address, so it can't be verified. Staff can add one with: python manage.py set_email USERNAME EMAIL")
         return redirect("login")
