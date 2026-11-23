@@ -76,7 +76,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "market",
-    "amymail",
+    "anymail",
     
 ]
 
