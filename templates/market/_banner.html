@@ -1,0 +1,6 @@
+{% load static %}{# usage: {% include "market/_banner.html" with title="..." sub="..." href=url art="africa" %}  (art: africa or diamond) #}
+<a class="banner" href="{{ href }}">
+  {% if art == "diamond" %}<img class="bl" src="{% static 'img/pattern-diamond.png' %}" alt="" loading="lazy">{% endif %}
+  <span class="bt"><strong>{{ title }}</strong>{% if sub %}<small>{{ sub }}</small>{% endif %}</span>
+  {% if art == "africa" %}<img class="br" src="{% static 'img/africa-map.png' %}" alt="" loading="lazy">{% endif %}
+</a>

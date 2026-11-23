@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}My orders{% endblock %}
+{% block content %}
+<div class="hd" style="margin-top:28px"><h2>My orders</h2></div>
+{% if orders %}
+<div class="tablewrap"><table>
+  <thead><tr><th>Order</th><th>Item</th><th>Seller</th><th>Total</th><th>Date</th><th>Status</th><th>Rating</th></tr></thead>
+  <tbody>{% for o in orders %}
+  <tr>
+    <td>#{{ o.pk }}</td>
+    <td><a href="{{ o.listing.get_absolute_url }}">{{ o.title }}</a>{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}</td>
+    <td><a href="{% url 'seller_profile' o.seller.username %}">{{ o.seller.username }}</a></td>
+    <td>KES {{ o.total|floatformat:0|intcomma }}</td>
+    <td>{{ o.created_at|date:"j M Y" }}</td>
+    <td>{{ o.get_status_display }}{% if o.payment %}<br><a class="meta" href="{% url 'payment_detail' o.payment.reference %}">{{ o.payment.reference }}</a>{% elif o.status == "unpaid" %}<br><a href="{% url 'cart' %}">Pay now</a>{% endif %}</td>
+    <td>{% if o.status == "completed" %}{% if o.review %}Rated{% else %}<a href="{% url 'review_create' o.pk %}">Rate now</a>{% endif %}{% else %}-{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="empty">No orders yet. <a href="{% url 'listing_list' %}">Browse listings.</a></p>{% endif %}
+{% endblock %}

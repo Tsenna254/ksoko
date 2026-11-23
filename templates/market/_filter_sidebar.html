@@ -1,0 +1,9 @@
+<aside class="fside" aria-label="Filters">
+  <div class="kente"></div>
+  <form method="get" class="fform" style="max-height:none">
+    {% for k, v in keep %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <h2>Filters</h2>
+    {% include "market/_filter_fields.html" %}
+    <footer class="ffoot"><a class="ghost" href="{{ clear_url }}">Reset</a><button class="solid">Apply filters</button></footer>
+  </form>
+</aside>

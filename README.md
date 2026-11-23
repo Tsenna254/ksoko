@@ -1,0 +1,288 @@
+# Ksoko (Django)
+
+A marketplace where signed-in customers can upload listings with photos, bid on
+auctions, buy fixed-price items and keep a watchlist.
+
+## Run it
+
+```bash
+python -m venv venv
+source venv/bin/activate       # Windows PowerShell: .\venv\Scripts\Activate.ps1 (see the Windows section below)
+cp .env.example .env        # local settings; DJANGO_DEBUG=1 switches on development mode
+pip install -r requirements.txt
+python manage.py makemigrations market
+python manage.py migrate
+python manage.py seed_categories
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+Open http://127.0.0.1:8000/. Register an account, then use **Sell an item**.
+The admin is at /admin/.
+
+## How customer uploads work
+
+| Piece | File | What it does |
+|---|---|---|
+| Storage | `ksoko/settings.py` | `MEDIA_ROOT` / `MEDIA_URL`, size and count limits |
+| Model | `market/models.py` | `ListingImage.image` (`ImageField`) saved under `media/listings/YYYY/MM/<random>.ext`; the file is deleted with the row |
+| Validation | `market/forms.py` | multi-file field, max 6 photos, 5 MB each, JPG/PNG/WebP only, Pillow confirms each file is a real image |
+| Form view | `market/views.py` | `create_listing` / `edit_listing` pass `request.FILES` to the form; only the seller can edit or delete |
+| Page | `templates/market/listing_form.html` + `static/css/ksoko.css` | The Sell an item page: drag-and-drop photos, cover picker, Buy it now / Auction switch, auction length, free-delivery toggle, live listing preview. Uses `enctype="multipart/form-data"`; the server re-checks everything the browser checks |
+
+Sellers can add photos or tick "Remove" on existing ones when editing. Auction
+length (1 to 10 days) is chosen when listing; the format and end time can't be
+changed afterwards, and once an auction has bids its price is locked too.
+
+## Auctions
+
+Run this every minute (cron or Task Scheduler) so ended auctions are marked
+sold to the highest bidder, or ended if nobody bid:
+
+```bash
+python manage.py close_auctions
+```
+
+## Before going live
+
+- Set `DJANGO_DEBUG=0`, a real `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`.
+- Serve `media/` from Nginx or object storage (Django only serves it when `DEBUG` is on), and run `collectstatic`.
+- Switch SQLite to PostgreSQL.
+- Payment is not built. "Buy it now" currently records the purchase only; add M-Pesa (Daraja) STK push and an order/shipping flow next.
+
+
+## Admin dashboard, orders and ratings
+
+- **Dashboard** at `/manage/` (staff accounts only; create one with `createsuperuser`). Pick **Daily / Weekly / Monthly / Annually** to see sales (KES), transactions, average order value, page views, unique visitors, new listings and members, with the change against the previous period. Charts, top pages, most viewed listings, top vendors and recent transactions sit below.
+- **Traffic** is recorded by `market/middleware.py` (one row per successful HTML page load; bots, staff, admin and static files are skipped).
+- **Transactions** are `Order` rows, created when someone uses Buy it now or when `close_auctions` closes an auction with bids. Payment is still not connected, so orders are recorded as completed.
+- **Ratings**: after an order, the buyer rates the item and the seller (1 to 5 stars, optional comment) from **My orders**. Item ratings show on cards and listing pages, vendor ratings show next to every seller name and on `/seller/<username>/`, and the dashboard lists best and lowest rated products and vendors.
+- Fixed-price listings now have a **quantity**; each purchase takes one and the listing shows as sold at zero. Listings with sales or bids can't be deleted.
+
+After pulling these changes run `python manage.py makemigrations market
+python manage.py migrate`.
+
+
+## Cart, checkout and payments
+
+- **Cart menu**: a Cart button with a live count sits in the header. Click it for a mini cart with a **Checkout** button, or open `/cart/` to change quantities. "Buy it now" adds the item and goes straight to checkout; "Add to cart" is on every card and listing page. Auctions you win appear in the cart too, ready to pay.
+- **Checkout** (`/checkout/`) takes **M-Pesa** or **Card**. Stock is reserved while the payment is open and returned if it is cancelled, rejected or expires (run `python manage.py expire_payments` from cron).
+- **Admin confirmation**: when a customer has paid, the payment shows up under **Payments awaiting confirmation** on `/manage/` (and in Django admin under Payments, with bulk Confirm / Reject actions). Orders only become **Completed**, and only count as sales and open the rating prompt, after a staff member confirms.
+
+### M-Pesa
+Pick one:
+1. **STK push (Daraja)**: set `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `MPESA_PASSKEY`, `MPESA_CALLBACK_URL` (public HTTPS, ending `/payments/mpesa/callback/`) and `MPESA_ENV=production` when live. Set `MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline` if the shortcode is a Till. The customer gets a PIN prompt and the callback records their M-Pesa receipt.
+2. **Manual Paybill/Till**: set `MPESA_MANUAL_KIND` (`Paybill` or `Till`) and `MPESA_MANUAL_NUMBER`. Customers pay it themselves and type the confirmation code. Check the code against your M-Pesa statement before confirming.
+
+### Card
+Cards go through Flutterwave's hosted checkout, so card numbers never touch this server. Set `FLW_SECRET_KEY` and `SITE_URL` (your public address). The return is verified server-side against Flutterwave before the payment is marked paid. Other Kenya-friendly processors (Pesapal, DPO, Paystack) can be swapped in by editing `market/gateways.py`.
+
+### Trying it without gateway accounts
+With `DEBUG` on, `PAYMENTS_TEST_MODE` is on: each payment page has a **Simulate a successful payment** button. Use it, then confirm the payment on `/manage/`. Switch test mode off (`PAYMENTS_TEST_MODE=0`) before going live.
+
+New migrations are needed again: `python manage.py makemigrations market
+python manage.py migrate`. Run `pip install -r requirements.txt` for `requests`.
+
+
+## Branding, promotional media and campaigns (admin menu)
+
+The staff menu (shown across `/manage/`) now has four tabs: **Dashboard**, **Branding**, **Promo media** and **Campaigns**.
+
+- **Branding** (`/manage/branding/`): upload the **website logo** (replaces the text logo in the header and footer), set the homepage headline and text, a **homepage banner background**, and a **page background image** with an adjustable cover strength. Replaced images are deleted from disk.
+- **Promo media** (`/manage/media/`): upload banner images (JPG, PNG, WebP, 5 MB) or short videos (MP4, WebM, 25 MB). Choose where each shows (homepage banners, or the top of listing pages), add an optional link, set the order, and hide or delete it any time.
+- **Campaigns** (`/manage/campaigns/`): create a campaign with a name, banner, badge text, **discount %**, eligible categories, **max listings per seller**, **minimum seller rating**, whether entries need approval, start and end dates and a **join deadline**. Every parameter can be edited later; running discounts are re-priced when you save. Approve or reject seller entries on the campaign page. Drafts stay hidden until you tick Published.
+- **Sellers**: a **Campaigns** link in the top menu opens `/my/campaigns/`, where sellers see open campaigns and their terms, join with selected fixed-price listings (with a price preview), track entry status and withdraw.
+- While a campaign is live, joined listings show the campaign price with the old price crossed out and a badge. Their prices are locked, and put back exactly as the seller had them when the campaign ends, the entry is withdrawn or rejected, or the campaign is deleted. The site starts and ends discounts itself at most once a minute; `python manage.py sync_campaigns` does the same from cron if you prefer.
+
+Run `python manage.py makemigrations market
+python manage.py migrate` again after updating.
+
+**Branding tips**: if an uploaded background looks faint, lower **Cover strength** (page background) or **Banner tint** (homepage photo). Saving now tells you exactly what changed, or that nothing was saved and why. After updating, run `makemigrations` and `migrate` (a new "banner tint" setting was added), then re-save Branding once.
+
+
+## Suggestions from search history
+
+`market/recommend.py` powers **Recommended for you** on the homepage, **You may also like** on listing pages and **You might like** on empty search results. Its docstring explains the scoring in full.
+
+- **Who is tracked**: logged-in users by user id; guests by an anonymous visitor id kept in their session (it carries over when they log in). The **IP address** is only a weak fallback for guests with almost no history: it is stored as a salted hash (never the raw address), counts a quarter as much, and only borrows other *anonymous* searches, because many people share one IP (offices, mobile networks).
+- **Signals**: searches, listing views, watchlist, cart and purchases, with older activity fading over about two weeks. Visitors with no history see what is trending.
+- **Privacy controls** on the homepage section: *Clear my history* and *Turn off personalisation*. Tell shoppers about this in your privacy policy (the Kenya Data Protection Act applies to IP addresses and browsing data). Run `python manage.py prune_search_history` from cron to delete data older than 90 days.
+- If the site runs behind a proxy or load balancer you control, set `TRUST_PROXY_HEADERS=1` so the real visitor IP is used.
+- **Admin**: the dashboard now lists top searches and searches that returned nothing, which shows you what to stock.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate` again after updating.
+
+
+## Email verification and sign-in codes
+
+- **Registering**: the new account must enter a 6-digit code emailed to it before it can sign in. Accounts that never confirm are deleted after a day.
+- **Signing in from a new network (IP address)**: a fresh code is emailed first. Networks are remembered as keyed hashes, never raw IPs, after a code is accepted. Staff accounts get a code on **every** sign-in.
+- Codes last 10 minutes, work once, allow 5 wrong tries, and at most 5 emails an hour per account. Only a hash of each code is stored. Sign-in codes only work from the network that asked for them.
+- In development, emails are printed in the terminal. In production set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` (any SMTP service: your host's, Zoho, Brevo, SendGrid, Gmail app password).
+- Staff made with `createsuperuser` must have an email: `python manage.py set_email USERNAME EMAIL` (this also marks it verified).
+- Mobile and home connections change IP often, so people may be asked for a code more than on a fixed office network.
+
+## Security changes and the going-live checklist
+
+Fixed in code: session keys are no longer stored (only a hash; run `python manage.py scrub_session_keys` once if you ran an older version); uploads are saved with a safe extension and videos are checked by content; the site refuses to start in production with `DEBUG` on, a weak secret key, SQLite, test payments, or no email; the M-Pesa callback needs a secret URL token (and optional IP list); rate limits on sign-in, sign-up, codes, search, bids and payment codes; the Django admin login now goes through email verification, staff sessions end after 2 hours idle, and the admin URL can be moved; staff can't confirm unpaid payments without a written reason; every confirm/reject, staff sign-in, branding change and campaign decision is kept in an audit log (Django admin > Audit logs); campaign prices are locked from the moment a seller joins; unpaid payments expire automatically; old page views, searches, codes and sessions are deleted automatically.
+
+**Before you go live, you still need to do these (they are server settings, not code):**
+1. Copy `.env.example` to `.env` (or set real environment variables) and fill in: `DJANGO_SECRET_KEY`, `IP_HASH_SALT`, `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL`, `DATABASE_URL` (PostgreSQL), `REDIS_URL` (so rate limits are shared between workers), email settings, `ADMIN_URL`, and `TRUST_PROXY_HEADERS=1` if behind Nginx or a load balancer. `DJANGO_DEBUG` must NOT be 1.
+2. Serve everything over HTTPS (Let's Encrypt). Run `python manage.py collectstatic`, `migrate`, `createsuperuser`, then `set_email`.
+3. Serve `/media/` from Nginx, never through Django, with these headers so an uploaded file can never run as a web page:
+```
+location /media/ {
+    alias /path/to/ksoko_django/media/;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Content-Security-Policy "default-src 'none'; img-src 'self'; media-src 'self'; sandbox" always;
+}
+client_max_body_size 30m;
+```
+4. Add an M-Pesa callback secret (`MPESA_CALLBACK_SECRET`, a long random string) and register `SITE_URL + /payments/mpesa/callback/<secret>/` with Safaricom.
+5. Keep `.env`, the database and backups out of git and web-readable folders; back up the database; keep Django, Pillow and other packages updated (`pip install -U -r requirements.txt`, then `pip install pip-audit`, then `pip-audit`).
+6. Publish a privacy policy that covers email, IP address and browsing data (Kenya Data Protection Act).
+
+
+## Forgotten password
+
+"Forgot your password?" on the sign-in page (`/accounts/password-reset/`) emails a one-time link that works for one hour. The answer is the same whether or not the address has an account, requests are rate limited per network and per address, and the new password must pass the same strength rules as registration. After a reset every signed-in session is ended, remembered networks are cleared (so the next sign-in needs an emailed code) and the reset is recorded in the audit log. Because the link goes to the account's email, protect that mailbox with its own two-step sign-in.
+
+
+## Automated email system
+
+All verification-code emails (sign-up and new-network sign-in) and password-reset emails go through one queue (`market/emailer.py`):
+
+- **Instant for the visitor**: the page answers immediately and the email is sent in the background, usually within a second or two. The verify page shows "Sending…" and warns if delivery failed.
+- **Automatic retries**: a failed send is retried after 30 seconds, 2 minutes, 5 minutes and 15 minutes, then marked failed. Brief mail-server outages therefore fix themselves.
+- **Never sends stale codes**: a code that has already expired is skipped, and requesting a new code cancels any older one still waiting.
+- **Nothing sensitive is kept**: the message text (code or reset link) is wiped from the database as soon as the email is sent, fails, expires or is replaced. Delivery records (who, when, status, error) are deleted after 14 days.
+- **Self-running**: a background thread sends right after queueing, and the site sweeps for leftovers and retries every minute. For extra reliability run a tiny worker next to the site: `python manage.py send_queued_emails --loop` (a systemd service works well), or run `python manage.py send_queued_emails` from cron every minute. Several workers can run together safely.
+- **Monitoring**: the admin dashboard has an **Email delivery** panel for the last 24 hours (sent, waiting, failed, latest errors) that turns red when emails are failing. Full records are under Django admin > Outbound emails.
+- Tests for the queue: `python manage.py test market`.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate` after updating.
+
+
+## Pay on Delivery (cash on delivery) and the 10% listing fee
+
+- **Sellers**: tick **Offer Pay on Delivery** when listing a fixed-price item. They pay a **one-time fee of 10% of the item's value** (price x quantity) right after uploading, by M-Pesa or card, and staff confirm it like any payment. Until then the item sells normally, prepaid only. Change the rate with `COD_LISTING_FEE_PERCENT`. Raising the price or quantity later creates a top-up fee for the extra value, and Pay on Delivery pauses until it is paid. The fee isn't refunded if the seller turns Pay on Delivery off. Auctions can't use it.
+- **Buyers**: checkout now asks for a delivery phone number and address (shared with the seller), and offers **Pay on delivery** when every item in the cart offers it (not for won auctions, not above `COD_MAX_ORDER_KES`, and not for buyers with `COD_MAX_FAILED` failed deliveries). A mixed-seller cart becomes one order per seller. Buyers can cancel within `COD_CANCEL_MINUTES`.
+- **Delivery**: the seller sees the order, address and cash to collect under **My sales**, delivers, and presses *Delivered, cash collected* (or *Delivery failed* with a reason). Staff then confirm on the dashboard, which completes the order and counts it as a sale, or press *Not delivered*, which returns the stock and counts against the buyer.
+- **Staff**: the dashboard lists Pay on Delivery orders next to other payments (with the delivery address and any seller note), shows **Pay on Delivery fees** collected as its own figure, and every confirm or failure is in the audit log.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate` after updating.
+
+
+## Windows (PowerShell) quick start
+
+Easiest: open PowerShell in this folder and run the helper script, which does every step and stops at the first error:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass    # lets this one window run scripts
+.\setup.ps1
+```
+
+Or step by step (one command per line; **don't join them with `&&`**, Windows PowerShell 5.1 doesn't understand it, use `;` or separate lines):
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+Copy-Item .env.example .env
+pip install -r requirements.txt
+python manage.py makemigrations market
+python manage.py migrate
+python manage.py seed_categories
+python manage.py createsuperuser
+python manage.py set_email YOURUSERNAME you@example.com
+python manage.py runserver
+```
+
+- If `python` isn't found, use `py` instead (`py manage.py migrate`).
+- Setting a variable for one session: `$env:DJANGO_DEBUG = "1"` (not `DJANGO_DEBUG=1 python ...`).
+- If `migrate` stops with "Set DJANGO_SECRET_KEY..." or "Set DATABASE_URL...", the `.env` file is missing or has no `DJANGO_DEBUG=1` line: run `Copy-Item .env.example .env` again.
+- If `migrate` says "No migrations to apply" but tables are missing, you skipped `makemigrations market`.
+
+
+## Deploying on Render
+
+The project includes everything Render needs: `render.yaml` (a Blueprint that creates the web service, the PostgreSQL database and a disk for uploads), `build.sh` (runs on every deploy), WhiteNoise for the CSS and gunicorn as the web server.
+
+**Before the first deploy (on your computer)**
+1. Create the migration files and commit them, because the server never generates them:
+   ```powershell
+   python manage.py makemigrations market
+   git add market/migrations
+   ```
+2. Put the project in a GitHub or GitLab repository. `.env`, `db.sqlite3` and `media/` are already ignored, so none of them are uploaded.
+
+**Deploy**
+1. Render dashboard > **New** > **Blueprint**, then choose your repository.
+2. Fill in the values it asks for: `ADMIN_URL` (a hard-to-guess admin address such as `backstage-x7k/`), the admin account (`DJANGO_SUPERUSER_USERNAME`, `_EMAIL`, `_PASSWORD`) and your email settings. The secret keys are generated for you.
+3. Wait for the build. `build.sh` collects static files, applies migrations, adds the starter categories and creates your admin account. Afterwards **delete `DJANGO_SUPERUSER_PASSWORD`** from the service's Environment tab.
+4. Open your `https://<name>.onrender.com` address and sign in at `/<ADMIN_URL>login/`: you'll be sent through the site's login and emailed a code. Then open `/manage/network-check/` and follow its instructions if the "address the site will treat as yours" isn't your real IP (set `TRUSTED_PROXY_COUNT`).
+
+**Things to know**
+- **Uploads**: Render wipes the service's files on every deploy. The Blueprint attaches a disk (`MEDIA_ROOT=/var/data/media`), which needs a paid instance and limits you to one instance. For scaling, use S3-compatible storage instead (AWS S3, Cloudflare R2, Backblaze B2): set `AWS_STORAGE_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `AWS_S3_CUSTOM_DOMAIN`) and make the bucket publicly readable. The site refuses to start on Render with neither, so you can't lose photos by accident.
+- **Email**: some hosts block outgoing SMTP. If codes don't arrive, use an email service's HTTPS API instead, e.g. `EMAIL_BACKEND=anymail.backends.brevo.EmailBackend` and `ANYMAIL_BREVO_API_KEY=...` (SendGrid, Mailgun and Postmark work the same way).
+- **M-Pesa and card**: add `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `MPESA_PASSKEY` (and `MPESA_ENV=production` when live) or `FLW_SECRET_KEY` in the Environment tab. Register `https://<your domain>/payments/mpesa/callback/<MPESA_CALLBACK_SECRET>/` with Safaricom (copy the secret from the Environment tab).
+- **Custom domain**: add it in Render, then set `DJANGO_ALLOWED_HOSTS` to your domain and `SITE_URL` to `https://yourdomain`.
+- **Free plans** sleep when idle (the site, its email sending and its housekeeping stop until the next visit), and free databases are temporary. Use paid plans for a real shop.
+- **More traffic**: raise `--workers`/`--threads` in `render.yaml`, add a Render Key Value (Redis) instance and set `REDIS_URL` so rate limits are shared between workers, and move uploads to S3 storage before running more than one instance.
+- **Updating**: change the code, run `makemigrations` locally if models changed, commit everything including `market/migrations/`, and push. Render redeploys; `build.sh` stops with a clear message if migration files are missing.
+
+## Sub categories
+
+Categories now have two levels, for example **Phones > Smartphones**.
+
+- **Django admin > Categories**: open a main category and add sub categories in the *Sub categories* table at the bottom of its page (three blank rows, save to add more). Or press *Add category* and pick a **Parent**. A sub category can't have its own sub categories, and the same name (like "Accessories") can be used under different parents.
+- **On the site**: the search box lists sub categories under their parent; the sell form shows them as "Phones > Smartphones"; browsing a main category also shows its sub categories' items and a row of sub category buttons; campaigns that allow a main category also allow its sub categories.
+- A category with sub categories or listings can't be deleted until they're moved or removed.
+
+After updating run `python manage.py makemigrations market`, then `python manage.py migrate`. Existing categories stay as main categories.
+
+
+## Filter menu, sort menu and product parameters
+
+- **Create the parameters in Django admin > Filter parameters**: give it a name (Brand, Colour, Storage, Dual SIM...), choose its kind (a list of options, a number with a unit like GB, or yes/no), and pick the categories it applies to (leave empty for all; a main category covers its sub categories). For list parameters type the options in *Quick add options* (one per line) or in the table below it. You can mark a parameter **required**, hide it from the filter menu, switch it off, and set its order.
+- **On the product upload page**: sellers see the parameters that fit the category they choose, and fill them in (required ones must be filled). The values show as *Specifications* on the product page and can be edited later.
+- **Filter pop-up** (the *Filters* button on every listing page): price range, condition, format, free delivery, Pay on Delivery, on sale, plus the admin-defined parameters for the category being browsed. Choices are checkboxes, numbers are min/max boxes. Active filters show as buttons you can click to remove, with a *Clear all* link.
+- **Sort menu** (next to Filters): newest, price low to high, price high to low, ending soonest, most bids, top rated, biggest discount.
+- Everything lives in the page address, so filtered and sorted results can be bookmarked and shared.
+
+Run `python manage.py makemigrations market`, then `python manage.py migrate`.
+
+
+## Troubleshooting start-up errors
+
+The site refuses to start in production mode with an unsafe or incomplete setup, and the error says what is missing.
+
+- **"Production mode needs a PostgreSQL database: set DATABASE_URL"** (or a similar message about `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` or `EMAIL_HOST`)
+  - *On your own computer* this means development mode is off. Make sure a `.env` file exists next to `manage.py` with the line `DJANGO_DEBUG=1` (`Copy-Item .env.example .env` in PowerShell). A `DJANGO_DEBUG` variable already set in your terminal overrides `.env`; check with `echo $env:DJANGO_DEBUG` and clear it with `Remove-Item Env:DJANGO_DEBUG`.
+  - *On Render* it means the web service has no database linked: create a PostgreSQL database on Render and add its **Internal Database URL** as `DATABASE_URL` in the service's Environment tab (or deploy with `render.yaml`, which does it for you).
+
+
+### Render shows "Server Error (500)"
+
+A 500 means the code crashed; Render's **Logs** tab says why. Open your service > **Logs**, find the last line starting with `Traceback`, and read the final line of it. The common ones:
+
+| The last line of the error says | What it means and how to fix it |
+|---|---|
+| `relation "market_..." does not exist` or `no such table` | The database tables weren't created. The build runs `migrate`; check the build log for failures, make sure `market/migrations/` is committed, then redeploy. |
+| `OperationalError` / `could not connect to server` | `DATABASE_URL` is wrong. Use the database's **Internal** URL, and keep the web service and database in the same region. |
+| `Missing staticfiles manifest entry` | `collectstatic` didn't run: the service's Build Command must be `bash build.sh`. |
+| `redis.exceptions.ConnectionError` | `REDIS_URL` is wrong. Rate limiting now switches itself off instead of crashing; fix or delete `REDIS_URL`. |
+| `botocore` / `AccessDenied` / `NoSuchBucket` | The `AWS_*` upload-storage settings are wrong, or the bucket isn't readable. |
+| `NoReverseMatch`, `TemplateSyntaxError`, `AttributeError` on one page | A code or template bug on that page. Copy the traceback to the developer. |
+
+Every deploy now runs `python manage.py doctor`, which checks the database, migrations, tables, static files, cache, uploads and email, prints PASS/WARN/FAIL for each in the build log, and stops the deploy if something essential is broken. You can run it yourself any time (Render Shell, or locally). The health check also fails (503) when the database or tables aren't ready, so Render keeps the previous working version running instead of switching to a broken one. Visitors now see a friendly error page instead of a bare "Server Error (500)".
+
+## UI refresh (African-inspired marketplace design)
+Restyled to the Ksoko UI concept: palette Green #1B6E20, Orange #F57C00, Sand #FBF1E7, Brown #3E2723, Yellow #FFC107; font Plus Jakarta Sans.
+Changed: `static/css/ksoko.css` (tokens + a "visual refresh" block at the end), `templates/base.html`, `market/home.html`, `_card.html`,
+`listing_list.html`, `_filters.html` (pop-up), new `_filter_fields.html` and `_filter_sidebar.html`, `listing_detail.html`, `cart.html`, `checkout.html`,
+and `market/filters.py` (new "rating & up" filter). Set the hero headline/text and image in Admin > Branding.
+
+### Pictures
+Artwork cropped from the UI concept lives in `static/img/` (hero shopper, category icons and tiles, kente diamond, Africa map, favicon).
+Categories can have their own picture: Admin > Categories > Image (needs `python manage.py migrate` for migration 0002). Without an upload, built-in artwork is picked by category name.
+The home hero shows the bundled shopper picture until you upload a hero image in Admin > Branding.

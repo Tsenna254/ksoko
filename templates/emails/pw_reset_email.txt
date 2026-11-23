@@ -1,0 +1,9 @@
+Hi {{ user.get_username }},
+
+We got a request to reset the password for your {{ brand }} account. To choose a new password, open this link:
+
+{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
+
+The link works for {{ minutes }} minutes and can only be used once.
+
+If you didn't ask for this, you can ignore this email. Your password won't change unless someone opens the link above, so don't forward it to anyone.

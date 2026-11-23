@@ -1,0 +1,4 @@
+{% if m.link_url %}<a class="promo" href="{{ m.link_url }}">{% else %}<div class="promo">{% endif %}
+  {% if m.kind == "video" %}<video src="{{ m.file.url }}" autoplay muted loop playsinline aria-label="{{ m.title }}"></video>
+  {% else %}<img src="{{ m.file.url }}" alt="{{ m.title }}" loading="lazy">{% endif %}
+{% if m.link_url %}</a>{% else %}</div>{% endif %}

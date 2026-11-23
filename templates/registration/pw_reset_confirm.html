@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Choose a new password{% endblock %}
+{% block content %}
+<div class="formcard narrow">
+  {% if validlink %}
+  <h1>Choose a new password</h1>
+  <form method="post">{% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}<div class="fld">{{ field.label_tag }}{{ field }}{% if field.help_text %}<small>{{ field.help_text|safe }}</small>{% endif %}{{ field.errors }}</div>{% endfor %}
+    <button class="solid">Save new password</button>
+  </form>
+  {% else %}
+  <h1>This link can't be used</h1>
+  <p>It may have expired or already been used. Reset links work for one hour and only once.</p>
+  <a class="solid" href="{% url 'password_reset' %}">Get a new link</a>
+  {% endif %}
+</div>
+{% endblock %}

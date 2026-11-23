@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Join {{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="formcard" style="max-width:820px">
+  <h1>Join {{ campaign.name }}</h1>
+  <p>{{ campaign.discount_percent }}% comes off each listing you add, from {{ campaign.starts_at|date:"j M" }} to {{ campaign.ends_at|date:"j M Y" }}. You can add {{ slots }} more listing{{ slots|pluralize }}.
+  {% if campaign.requires_approval %}Our team approves each entry first.{% endif %}</p>
+  <form method="post">{% csrf_token %}
+    {{ form.non_field_errors }}{{ form.listings.errors }}
+    <div class="joinlist">
+      {% for l in choices %}
+      <label class="joinrow">
+        <input type="checkbox" name="listings" value="{{ l.pk }}">
+        {% with c=l.cover %}{% if c %}<img src="{{ c.image.url }}" alt="">{% else %}<span class="noimg">{{ l.title|first }}</span>{% endif %}{% endwith %}
+        <span class="jt">{{ l.title }}<small class="meta">{{ l.category.name }}, {{ l.quantity }} in stock</small></span>
+        <span class="jp"><s class="meta">KES {{ l.price|floatformat:0|intcomma }}</s><strong>KES {{ l.campaign_price|floatformat:0|intcomma }}</strong></span>
+      </label>
+      {% endfor %}
+    </div>
+    <button class="solid">Add to campaign</button>
+    <a class="ghost" href="{% url 'seller_campaigns' %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

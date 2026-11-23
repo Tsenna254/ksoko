@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load market_extras %}
+{% block title %}{{ seller.username }}{% endblock %}
+{% block content %}
+<section class="sellerhead">
+  <div class="avatar" aria-hidden="true">{{ seller.username|first|upper }}</div>
+  <div>
+    <h1>{{ seller.username }}</h1>
+    <p>{% if rating.n %}<span class="stars">{{ rating.avg|stars }}</span> <strong>{{ rating.avg|floatformat:1 }}</strong> <span class="meta">from {{ rating.n }} rating{{ rating.n|pluralize }}</span>{% else %}<span class="meta">No ratings yet</span>{% endif %}</p>
+    <p class="meta">{{ sales_count }} sale{{ sales_count|pluralize }} · Member since {{ seller.date_joined|date:"M Y" }}</p>
+  </div>
+</section>
+
+<section class="sec"><div class="hd"><h2>Items for sale</h2></div>
+{% if items %}<div class="grid">{% for l in items %}{% include "market/_card.html" %}{% endfor %}</div>
+{% else %}<p class="empty">No active listings right now.</p>{% endif %}</section>
+
+<section class="sec"><div class="hd"><h2>Feedback</h2></div>
+{% for r in reviews %}
+<div class="review">
+  <div><span class="stars">{{ r.seller_rating|stars }}</span> <span class="meta">for “{{ r.listing.title }}”</span></div>
+  {% if r.comment %}<p>{{ r.comment }}</p>{% endif %}
+  <span class="meta">{{ r.reviewer.username|slice:":1" }}*** on {{ r.created_at|date:"j M Y" }}</span>
+</div>
+{% empty %}<p class="empty">No feedback yet.</p>{% endfor %}</section>
+{% endblock %}

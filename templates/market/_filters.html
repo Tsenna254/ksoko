@@ -1,0 +1,14 @@
+<dialog id="filterdlg" class="filterdlg" aria-labelledby="fdt">
+  <div class="kente fkente"></div>
+  <form method="get" class="fform">
+    {% for k, v in keep %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <header class="fhead"><h2 id="fdt">Filters</h2><button type="button" class="x" data-close aria-label="Close filters">×</button></header>
+    <div class="fbody">
+      {% include "market/_filter_fields.html" %}
+    </div>
+    <footer class="ffoot">
+      <a class="ghost" href="{{ clear_url }}">Reset</a>
+      <button class="solid">Apply filters</button>
+    </footer>
+  </form>
+</dialog>

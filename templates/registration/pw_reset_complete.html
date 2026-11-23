@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Password changed{% endblock %}
+{% block content %}
+<div class="formcard narrow">
+  <h1>Password changed</h1>
+  <p>Your password has been updated and you've been signed out everywhere. Sign in with the new one.</p>
+  <p class="meta">For your safety we'll email you a code the next time you sign in, even from a device you used before.</p>
+  <a class="solid" href="{% url 'login' %}">Sign in</a>
+</div>
+{% endblock %}

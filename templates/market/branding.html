@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Branding{% endblock %}
+{% block content %}
+{% include "market/_manage_nav.html" with active="branding" %}
+<h1 class="stitle">Branding</h1>
+<p class="lead">Change the logo, headline and background images. Changes go live as soon as you save.</p>
+<p class="meta">Last saved {{ site.updated_at|timesince }} ago.</p>
+<form method="post" enctype="multipart/form-data" class="brandform" novalidate>{% csrf_token %}
+  {{ form.non_field_errors }}
+  <section class="scard"><h2>Logo and name</h2>
+    <div class="fld"><label for="id_site_name">Site name</label>{{ form.site_name }}{{ form.site_name.errors }}</div>
+    <div class="fld"><label for="id_logo">{{ form.logo.label }}</label>
+      {% if site.logo %}<div class="curimg logoprev"><img src="{{ site.logo.url }}" alt="Current logo"></div>{% endif %}
+      {{ form.logo }}<small>Wide logos work best (about 400 × 120 px). JPG, PNG or WebP, up to 5 MB. Leave empty to use the text logo.</small>{{ form.logo.errors }}</div>
+  </section>
+  <section class="scard"><h2>Homepage banner</h2>
+    <div class="fld"><label for="id_hero_headline">Headline</label>{{ form.hero_headline }}{{ form.hero_headline.errors }}</div>
+    <div class="fld"><label for="id_hero_subtext">Text under the headline</label>{{ form.hero_subtext }}{{ form.hero_subtext.errors }}</div>
+    <div class="fld"><label for="id_hero_background">{{ form.hero_background.label }}</label>
+      {% if site.hero_background %}<div class="curimg"><img src="{{ site.hero_background.url }}" alt="Current banner background"></div>{% endif %}
+      {{ form.hero_background }}<small>A wide photo, at least 1600 px across.</small>{{ form.hero_background.errors }}</div>
+    <div class="fld"><label for="id_hero_overlay">Banner tint (%)</label>{{ form.hero_overlay }}<small>{{ form.hero_overlay.help_text }}</small>{{ form.hero_overlay.errors }}</div>
+  </section>
+  <section class="scard"><h2>Page background</h2>
+    <div class="fld"><label for="id_site_background">{{ form.site_background.label }}</label>
+      {% if site.site_background %}<div class="curimg"><img src="{{ site.site_background.url }}" alt="Current page background"></div>{% endif %}
+      {{ form.site_background }}{{ form.site_background.errors }}</div>
+    <div class="fld"><label for="id_background_overlay">Cover strength (%)</label>{{ form.background_overlay }}<small>{{ form.background_overlay.help_text }}</small>{{ form.background_overlay.errors }}</div>
+  </section>
+  <button class="solid">Save branding</button>
+  <a class="ghost" href="{% url 'home' %}" target="_blank" rel="noopener">View site</a>
+</form>
+{% endblock %}

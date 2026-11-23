@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{% if is_register %}Confirm your email{% else %}Verify it's you{% endif %}{% endblock %}
+{% block head %}{% if delivery == "queued" or delivery == "sending" %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<div class="formcard narrow">
+  <h1>{% if is_register %}Confirm your email{% else %}Verify it's you{% endif %}</h1>
+  <p>{% if is_register %}We sent a 6-digit code to <strong>{{ email }}</strong>. Enter it to finish creating your account.{% else %}For your security we need to confirm this sign-in. We sent a 6-digit code to <strong>{{ email }}</strong>.{% endif %}</p>
+  {% if delivery == "queued" or delivery == "sending" %}<p class="meta">Sending your code…</p>{% endif %}
+  {% if delivery == "failed" %}<p class="msg error" role="alert">We couldn't deliver the email. Check the address is right, then ask for a new code, or try again later.</p>{% endif %}
+  {% if error %}<p class="msg error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="fld"><label for="code">Verification code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]*" placeholder="123456" required autofocus style="font-size:26px;letter-spacing:6px;text-align:center"></div>
+    <button class="solid">Verify</button>
+  </form>
+  <form method="post" action="{% url 'verify_resend' %}" style="margin-top:14px">{% csrf_token %}
+    <span class="meta">Didn't get it? Check spam, then</span> <button class="linkbtn">send a new code</button>
+  </form>
+  <p class="meta">The code works for {{ minutes }} minutes. <a href="{% url 'login' %}">Start again</a></p>
+</div>
+{% endblock %}

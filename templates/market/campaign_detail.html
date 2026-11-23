@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}{{ campaign.name }}{% endblock %}
+{% block content %}
+<section class="camphead"{% if campaign.banner %} style="background-image:linear-gradient(rgba(10,107,61,.8),rgba(10,107,61,.8)),url('{{ campaign.banner.url }}')"{% endif %}>
+  <span class="pill {{ campaign.phase }}">{% if campaign.phase == "live" %}Live now{% elif campaign.phase == "upcoming" %}Starts {{ campaign.starts_at|date:"j M" }}{% else %}{{ campaign.phase|capfirst }}{% endif %}</span>
+  <h1>{{ campaign.name }}</h1>
+  <p class="bigoff">{{ campaign.discount_percent }}% off</p>
+  {% if campaign.description %}<p>{{ campaign.description }}</p>{% endif %}
+  <p class="meta" style="color:#D6EFE0">Runs {{ campaign.starts_at|date:"j M" }} to {{ campaign.ends_at|date:"j M Y, H:i" }}</p>
+  {% if user.is_authenticated and campaign.is_joinable %}
+    {% if can_join %}<a class="btn f" href="{% url 'campaign_join' campaign.slug %}">Join as a seller</a>
+    {% elif blocker %}<p class="meta" style="color:#FCEFB4">{{ blocker }}</p>{% endif %}
+  {% elif not user.is_authenticated and campaign.is_joinable %}<a class="btn f" href="{% url 'login' %}?next={{ request.path }}">Sign in to join as a seller</a>{% endif %}
+</section>
+<section class="sec"><div class="hd"><h2>Deals in this campaign</h2></div>
+  {% if items %}<div class="grid">{% for l in items %}{% include "market/_card.html" %}{% endfor %}</div>
+  {% else %}<p class="empty">{% if campaign.phase == "live" %}No items yet. Check back soon.{% else %}Deals appear here when the campaign goes live.{% endif %}</p>{% endif %}
+</section>
+{% endblock %}

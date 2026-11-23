@@ -1,0 +1,7 @@
+<nav class="mnav" aria-label="Admin sections">
+  <a href="{% url 'dashboard' %}" {% if active == "dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
+  <a href="{% url 'manage_branding' %}" {% if active == "branding" %}aria-current="page"{% endif %}>Branding</a>
+  <a href="{% url 'manage_media' %}" {% if active == "media" %}aria-current="page"{% endif %}>Promo media</a>
+  <a href="{% url 'manage_campaigns' %}" {% if active == "campaigns" %}aria-current="page"{% endif %}>Campaigns</a>
+  <a href="{% url 'admin:index' %}">All data</a>
+</nav>

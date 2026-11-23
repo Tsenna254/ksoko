@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}{% if campaign %}Edit {{ campaign.name }}{% else %}New campaign{% endif %}{% endblock %}
+{% block content %}
+{% include "market/_manage_nav.html" with active="campaigns" %}
+<div class="hd"><h1 class="stitle">{% if campaign %}{{ campaign.name }}{% else %}New campaign{% endif %}</h1>
+  {% if campaign %}<span class="pill {{ campaign.phase }}">{{ campaign.phase|capfirst }}</span>{% endif %}</div>
+
+<form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}
+  {{ form.non_field_errors }}
+  <section class="scard"><h2>About</h2>
+    <div class="fld"><label for="id_name">Name</label>{{ form.name }}{{ form.name.errors }}</div>
+    <div class="fld"><label for="id_description">Description</label>{{ form.description }}{{ form.description.errors }}</div>
+    <div class="row2">
+      <div class="fld"><label for="id_badge_text">Badge text</label>{{ form.badge_text }}<small>{{ form.badge_text.help_text }}</small>{{ form.badge_text.errors }}</div>
+      <div class="fld"><label for="id_banner">Banner image</label>
+        {% if campaign and campaign.banner %}<div class="curimg"><img src="{{ campaign.banner.url }}" alt="Current banner"></div>{% endif %}
+        {{ form.banner }}{{ form.banner.errors }}</div>
+    </div>
+  </section>
+
+  <section class="scard"><h2>Campaign parameters</h2><p class="sub">You can change these at any time. Running discounts are re-priced when you save.</p>
+    <div class="row2">
+      <div class="fld"><label for="id_discount_percent">Discount (%)</label>{{ form.discount_percent }}<small>{{ form.discount_percent.help_text }}</small>{{ form.discount_percent.errors }}</div>
+      <div class="fld"><label for="id_max_listings_per_seller">Max listings per seller</label>{{ form.max_listings_per_seller }}{{ form.max_listings_per_seller.errors }}</div>
+      <div class="fld"><label for="id_min_seller_rating">Minimum seller rating</label>{{ form.min_seller_rating }}<small>{{ form.min_seller_rating.help_text }}</small>{{ form.min_seller_rating.errors }}</div>
+      <div class="fld"><span class="lbl">Entry approval</span><label class="chk">{{ form.requires_approval }} Staff approve each entry</label><small>{{ form.requires_approval.help_text }}</small></div>
+    </div>
+    <div class="fld"><span class="lbl">Eligible categories</span><div class="checks">{% for c in form.categories %}<label class="chk">{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div><small>{{ form.categories.help_text }}</small>{{ form.categories.errors }}</div>
+  </section>
+
+  <section class="scard"><h2>Schedule</h2>
+    <div class="row2">
+      <div class="fld"><label for="id_starts_at">Starts</label>{{ form.starts_at }}{{ form.starts_at.errors }}</div>
+      <div class="fld"><label for="id_ends_at">Ends</label>{{ form.ends_at }}{{ form.ends_at.errors }}</div>
+      <div class="fld"><label for="id_join_deadline">Seller join deadline</label>{{ form.join_deadline }}<small>{{ form.join_deadline.help_text }}</small>{{ form.join_deadline.errors }}</div>
+    </div>
+    <div class="fld"><label class="chk">{{ form.is_published }} Published</label><small>{{ form.is_published.help_text }}</small></div>
+    <div class="fld"><label class="chk">{{ form.featured }} Show on the homepage</label></div>
+  </section>
+  <button class="solid">{% if campaign %}Save changes{% else %}Create campaign{% endif %}</button>
+  <a class="ghost" href="{% url 'manage_campaigns' %}">Back</a>
+</form>
+
+{% if campaign %}
+<section class="sec"><h2>Entries ({{ entries|length }})</h2>
+  {% if entries %}<div class="tablewrap"><table>
+    <thead><tr><th>Seller</th><th>Listing</th><th>Price</th><th>Status</th><th></th></tr></thead>
+    <tbody>{% for e in entries %}<tr>
+      <td>{{ e.seller.username }}</td>
+      <td><a href="{{ e.listing.get_absolute_url }}">{{ e.listing.title|truncatechars:40 }}</a></td>
+      <td>{% if e.applied %}<s class="meta">KES {{ e.price_before|floatformat:0|intcomma }}</s> KES {{ e.listing.price|floatformat:0|intcomma }}{% else %}KES {{ e.listing.price|floatformat:0|intcomma }}{% endif %}</td>
+      <td><span class="pill {{ e.status }}">{{ e.get_status_display }}</span>{% if e.applied %} <span class="pill confirmed">Discount on</span>{% endif %}</td>
+      <td class="acts">
+        {% if e.status == "pending" or e.status == "rejected" %}<form method="post" action="{% url 'entry_decision' e.pk 'approve' %}">{% csrf_token %}<button class="solid sm">Approve</button></form>{% endif %}
+        {% if e.status == "pending" or e.status == "approved" %}<form method="post" action="{% url 'entry_decision' e.pk 'reject' %}">{% csrf_token %}<button class="ghost sm">Reject</button></form>{% endif %}
+      </td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="empty">No sellers have joined yet.{% if campaign.phase == "draft" %} Publish the campaign so sellers can see it.{% endif %}</p>{% endif %}
+</section>
+<section class="sec"><form method="post" action="{% url 'campaign_delete' campaign.pk %}" onsubmit="return confirm('Delete this campaign? Sellers get their normal prices back.')">{% csrf_token %}<button class="linkbtn danger">Delete this campaign</button></form></section>
+{% endif %}
+{% endblock %}
