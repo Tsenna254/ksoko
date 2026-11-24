@@ -87,7 +87,7 @@ class MaintenanceMiddleware:
                 try:
                     task()
                 except Exception:
-                    pass
+                    logger.exception("Maintenance task %s failed", getattr(task, "__name__", task))
         return self.get_response(request)
 
 
