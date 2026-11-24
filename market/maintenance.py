@@ -1,4 +1,5 @@
 """Housekeeping that runs by itself (see MaintenanceMiddleware) or from `manage.py run_maintenance`."""
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -9,10 +10,19 @@ from django.utils import timezone
 from . import campaigns, emailer
 from .models import OutboundEmail, PageView, Payment, SearchEvent, VerificationCode
 
+logger = logging.getLogger(__name__)
+
 
 def run_minutely():
-    campaigns.sync()                                           # start and end campaign discounts
-    emailer.process_outbox()                                   # send or retry queued emails
+    # Emails go first and each step is isolated, so one failing task can't stop verification codes from being sent.
+    try:
+        emailer.process_outbox()                               # send or retry queued emails
+    except Exception:
+        logger.exception("Sending queued emails failed")
+    try:
+        campaigns.sync()                                       # start and end campaign discounts
+    except Exception:
+        logger.exception("Campaign sync failed")
     cutoff = timezone.now() - timedelta(minutes=settings.PAYMENT_HOLD_MINUTES)
     for payment in Payment.objects.filter(status=Payment.Status.AWAITING, created_at__lt=cutoff):
         payment.release(Payment.Status.CANCELLED, "Expired: no payment received")   # returns the stock
