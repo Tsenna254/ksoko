@@ -2,6 +2,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.staticfiles.storage import staticfiles_storage
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import include, path, re_path
 
@@ -13,8 +14,16 @@ def favicon(request):
     return redirect(staticfiles_storage.url("img/favicon.svg"))
 
 
+def robots_txt(request):
+    """Tells search engines they may crawl the shop, but not the account, cart and checkout pages."""
+    lines = ["User-agent: *", "Allow: /", "Disallow: /accounts/", "Disallow: /cart/", "Disallow: /checkout/",
+             "Disallow: /pay/", "Disallow: /my/"]
+    return HttpResponse("\n".join(lines) + "\n", content_type="text/plain")
+
+
 urlpatterns = [
     path("favicon.ico", favicon),
+    path("robots.txt", robots_txt),
     # The admin's own login would skip email verification, so it redirects to the site's login.
     path(settings.ADMIN_URL + "login/", accounts.admin_login_redirect),
     path(settings.ADMIN_URL, admin.site.urls),
