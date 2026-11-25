@@ -301,6 +301,31 @@ class Order(models.Model):
     def __str__(self):
         return f"Order #{self.pk}: {self.title}"
 
+    @property
+    def chat_available(self):
+        """The buyer and seller may message each other once the buyer has paid, or chosen Pay on delivery."""
+        pay = self.payment
+        if pay is None or self.status == self.Status.CANCELLED:
+            return False
+        return pay.status in (Payment.Status.PAID, Payment.Status.CONFIRMED, Payment.Status.COD_PENDING)
+
+
+class ChatMessage(models.Model):
+    """One message in the chat between an order's buyer and seller (see market/chat.py)."""
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="chat_messages")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    body = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["order", "id"])]
+
+    def __str__(self):
+        return f"Order #{self.order_id}: {self.body[:40]}"
+
 
 RATING = [MinValueValidator(1), MaxValueValidator(5)]
 

@@ -9,7 +9,7 @@
       <span class="meta">{{ p.created_at|date:"j M Y, H:i" }} · buyer {{ p.user.username }}</span></div>
     <strong>KES {{ r.total|floatformat:0|intcomma }}</strong>
   </div>
-  <ul class="slist">{% for o in r.orders %}<li><span>{{ o.title }}{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}</span><span>KES {{ o.total|floatformat:0|intcomma }}</span></li>{% endfor %}</ul>
+  <ul class="slist">{% for o in r.orders %}<li><span>{{ o.title }}{% if o.quantity > 1 %} × {{ o.quantity }}{% endif %}{% if o.chat_available %} · <a href="{% url 'order_chat' o.pk %}">Chat with buyer</a>{% endif %}</span><span>KES {{ o.total|floatformat:0|intcomma }}</span></li>{% endfor %}</ul>
   {% if r.show_details %}
     <p class="meta">Deliver to <strong>{{ p.delivery_phone }}</strong>, {{ p.delivery_address }}</p>
   {% else %}<p class="meta">Waiting for the buyer’s payment. Delivery details appear once they’ve paid.</p>{% endif %}

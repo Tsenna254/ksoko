@@ -2,7 +2,7 @@ from django.contrib.auth.views import LogoutView
 from django.views.generic import TemplateView
 from django.urls import path
 
-from . import accounts, campaigns, cart, cod, dashboard, payments, recommend, siteadmin, views
+from . import accounts, campaigns, cart, chat, cod, dashboard, payments, recommend, siteadmin, views
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -29,6 +29,9 @@ urlpatterns = [
     path("my/listings/", views.my_listings, name="my_listings"),
     path("my/orders/", views.my_orders, name="my_orders"),
     path("orders/<int:pk>/review/", views.review_create, name="review_create"),
+    path("orders/<int:pk>/chat/", chat.order_chat, name="order_chat"),
+    path("orders/<int:pk>/chat/messages/", chat.chat_messages, name="chat_messages"),
+    path("orders/<int:pk>/chat/send/", chat.chat_send, name="chat_send"),
     path("seller/<str:username>/", views.seller_profile, name="seller_profile"),
     path("manage/", dashboard.dashboard, name="dashboard"),
     path("my/campaigns/", campaigns.seller_campaigns, name="seller_campaigns"),

@@ -4,7 +4,7 @@
 <div class="hd" style="margin-top:28px"><h2>My orders</h2></div>
 {% if orders %}
 <div class="tablewrap"><table>
-  <thead><tr><th>Order</th><th>Item</th><th>Seller</th><th>Total</th><th>Date</th><th>Status</th><th>Rating</th></tr></thead>
+  <thead><tr><th>Order</th><th>Item</th><th>Seller</th><th>Total</th><th>Date</th><th>Status</th><th>Chat</th><th>Rating</th></tr></thead>
   <tbody>{% for o in orders %}
   <tr>
     <td>#{{ o.pk }}</td>
@@ -13,6 +13,7 @@
     <td>KES {{ o.total|floatformat:0|intcomma }}</td>
     <td>{{ o.created_at|date:"j M Y" }}</td>
     <td>{{ o.get_status_display }}{% if o.payment %}<br><a class="meta" href="{% url 'payment_detail' o.payment.reference %}">{{ o.payment.reference }}</a>{% elif o.status == "unpaid" %}<br><a href="{% url 'cart' %}">Pay now</a>{% endif %}</td>
+    <td>{% if o.chat_available %}<a href="{% url 'order_chat' o.pk %}">Chat</a>{% else %}-{% endif %}</td>
     <td>{% if o.status == "completed" %}{% if o.review %}Rated{% else %}<a href="{% url 'review_create' o.pk %}">Rate now</a>{% endif %}{% else %}-{% endif %}</td>
   </tr>{% endfor %}</tbody>
 </table></div>

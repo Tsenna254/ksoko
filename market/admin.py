@@ -256,3 +256,24 @@ class FilterParameterAdmin(admin.ModelAdmin):
                     order += 1
                     FilterOption.objects.create(parameter=obj, value=value, sort_order=order)
                     have.add(value.lower())
+
+
+from .models import ChatMessage  # noqa: E402
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    """Read-only, so staff can look into a dispute. These chats are otherwise private to the buyer and seller."""
+    list_display = ("created_at", "order", "sender", "short_body", "read_at")
+    search_fields = ("order__id", "sender__username", "body")
+    readonly_fields = [f.name for f in ChatMessage._meta.fields]
+
+    @admin.display(description="Message")
+    def short_body(self, obj):
+        return obj.body[:80]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

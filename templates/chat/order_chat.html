@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Chat · order #{{ order.pk }}{% endblock %}
+{% block content %}
+<style>
+  /* Everything is scoped to .chatbox so it can't clash with the site's own styles.
+     The "mine" bubble colour follows --accent or --brand if your CSS defines one (blue otherwise). */
+  .chatbox { max-width: 720px; margin: 18px auto 28px; display: flex; flex-direction: column; height: min(78vh, 640px);
+             border: 1px solid rgba(127,127,127,.3); border-radius: 14px; overflow: hidden; }
+  .chatbox .chat-top { padding: 12px 16px; border-bottom: 1px solid rgba(127,127,127,.3); }
+  .chatbox .chat-top strong { display: block; font-size: 16px; }
+  .chatbox .chat-top .meta { margin: 2px 0 0; }
+  .chatbox .chat-safety { margin: 0; padding: 8px 16px; font-size: 12.5px; background: rgba(255,170,0,.15); }
+  .chatbox .chat-log { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .chatbox .cempty { margin: auto; text-align: center; opacity: .7; font-size: 14px; }
+  .chatbox .cmsg { max-width: 82%; display: flex; flex-direction: column; }
+  .chatbox .cmsg.mine { align-self: flex-end; align-items: flex-end; }
+  .chatbox .cmsg.theirs { align-self: flex-start; align-items: flex-start; }
+  .chatbox .cbubble { padding: 8px 12px; border-radius: 14px; font-size: 15px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chatbox .mine .cbubble { background: var(--accent, var(--brand, #1a6ef0)); color: #fff; border-bottom-right-radius: 4px; }
+  .chatbox .theirs .cbubble { background: rgba(127,127,127,.18); border-bottom-left-radius: 4px; }
+  .chatbox .ctime { font-size: 11px; opacity: .6; margin-top: 3px; }
+  .chatbox .chat-note { min-height: 18px; padding: 0 16px 4px; font-size: 12.5px; color: #d93025; }
+  .chatbox form { border-top: 1px solid rgba(127,127,127,.3); padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end; margin: 0; }
+  .chatbox textarea { flex: 1; resize: none; min-height: 42px; max-height: 120px; padding: 10px 12px; font: inherit; font-size: 15px; margin: 0; }
+  .chatbox .chat-count { font-size: 11px; opacity: .6; padding: 0 16px 8px; text-align: right; }
+</style>
+
+<div class="hd" style="margin-top:28px"><h2>Chat</h2><a class="ghost" href="{{ back_url }}">&larr; Back</a></div>
+
+<section class="chatbox">
+  <div class="chat-top">
+    <strong>{{ order.title }}</strong>
+    <p class="meta">Order #{{ order.pk }} · {{ other_role }}: {{ other.username }}{% if order.payment and order.payment.method == "cod" %} · Pay on Delivery{% endif %}</p>
+  </div>
+  <p class="chat-safety">Keep your chat about this order. Never share your M-Pesa PIN, card details or one-time codes with anyone, including Ksoko staff.</p>
+
+  <div class="chat-log" id="chat-log" role="log" aria-live="polite"
+       data-poll-url="{% url 'chat_messages' order.pk %}" data-last-id="{{ last_id }}">
+    {% for m in chat_messages %}
+      <div class="cmsg {% if m.mine %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">
+        <div class="cbubble">{{ m.body }}</div>
+        <div class="ctime">{{ m.time }}</div>
+      </div>
+    {% empty %}
+      <div class="cempty" id="chat-empty">No messages yet. Say hello and agree on delivery details.</div>
+    {% endfor %}
+  </div>
+
+  <div class="chat-note" id="chat-note" role="status"></div>
+  <form id="chat-form" method="post" action="{% url 'chat_send' order.pk %}">
+    {% csrf_token %}
+    <textarea id="chat-body" name="body" rows="1" maxlength="{{ max_length }}" placeholder="Write a message…" required></textarea>
+    <button id="chat-send" class="solid" type="submit">Send</button>
+  </form>
+  <div class="chat-count"><span id="chat-count">0</span> / {{ max_length }}</div>
+</section>
+
+<script>
+(function () {
+  var log = document.getElementById("chat-log");
+  var form = document.getElementById("chat-form");
+  var input = document.getElementById("chat-body");
+  var note = document.getElementById("chat-note");
+  var sendBtn = document.getElementById("chat-send");
+  var count = document.getElementById("chat-count");
+  var pollUrl = log.dataset.pollUrl;
+  var lastId = parseInt(log.dataset.lastId || "0", 10);
+  var seen = {};
+  var delay = 4000, timer = null, closed = false;
+
+  Array.prototype.forEach.call(log.querySelectorAll("[data-id]"), function (el) { seen[el.dataset.id] = true; });
+  log.scrollTop = log.scrollHeight;
+
+  function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
+  function showNote(text) { note.textContent = text || ""; }
+  function updateCount() { count.textContent = input.value.length; }
+
+  function addMessage(m) {
+    if (seen[m.id]) return;
+    seen[m.id] = true;
+    if (m.id > lastId) lastId = m.id;
+    var empty = document.getElementById("chat-empty");
+    if (empty) empty.remove();
+    var wrap = document.createElement("div");
+    wrap.className = "cmsg " + (m.mine ? "mine" : "theirs");
+    wrap.dataset.id = m.id;
+    var bubble = document.createElement("div");
+    bubble.className = "cbubble";
+    bubble.textContent = m.body;          // textContent, never innerHTML: messages can't inject HTML
+    var time = document.createElement("div");
+    time.className = "ctime";
+    time.textContent = m.time;
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+    log.appendChild(wrap);
+  }
+
+  function schedule() { if (!closed) timer = setTimeout(poll, delay); }
+
+  function poll() {
+    if (closed) return;
+    if (document.visibilityState !== "visible") { schedule(); return; }
+    fetch(pollUrl + "?after=" + lastId, { credentials: "same-origin", cache: "no-store", headers: { "Accept": "application/json" } })
+      .then(function (r) {
+        if (r.status === 404) {
+          closed = true;
+          showNote("This chat is no longer available.");
+          input.disabled = true; sendBtn.disabled = true;
+          return null;
+        }
+        if (r.status === 429) { delay = Math.min(delay * 2, 30000); return null; }
+        if (!r.ok) throw new Error("bad response");
+        delay = 4000;
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.messages) return;
+        var stick = nearBottom();
+        data.messages.forEach(addMessage);
+        if (data.messages.length && stick) log.scrollTop = log.scrollHeight;
+      })
+      .catch(function () { delay = Math.min(delay * 2, 30000); })
+      .then(schedule);
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && !closed) { clearTimeout(timer); poll(); }
+  });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (closed || !input.value.trim()) return;
+    sendBtn.disabled = true;
+    showNote("");
+    fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin",
+                         headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { showNote(res.data.error || "Could not send. Please try again."); return; }
+        input.value = ""; updateCount(); input.style.height = "";
+        addMessage(res.data.message);
+        log.scrollTop = log.scrollHeight;
+      })
+      .catch(function () { showNote("Could not send. Check your connection and try again."); })
+      .then(function () { sendBtn.disabled = closed; input.focus(); });
+  });
+
+  input.addEventListener("input", function () {
+    updateCount();
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (form.requestSubmit) { form.requestSubmit(); } else { sendBtn.click(); }
+    }
+  });
+
+  schedule();
+})();
+</script>
+{% endblock %}
