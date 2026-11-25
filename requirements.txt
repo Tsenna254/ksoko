@@ -8,3 +8,5 @@ whitenoise>=6.6
 django-storages[s3]>=1.14
 django-anymail>=11.0
 django-anymail[brevo]
+django-storages[s3]
+boto3
