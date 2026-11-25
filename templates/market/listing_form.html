@@ -103,7 +103,8 @@
   var input=$("id_images");
   function kes(n){return "KES "+Math.round(n).toLocaleString("en-US")}
   function keptCount(){var n=0;document.querySelectorAll("input[name=delete_images]").forEach(function(c){if(!c.checked)n++});return n}
-  function setErr(n,msg){var e=$("e-"+n),f=$("id_"+n);if(e)e.textContent=msg||"";if(f)f.classList.toggle("bad",!!msg)}
+  function setErr(n,msg){var e=$("e-"+n),f=$("id_"+n);if(e)e.textContent=msg||"";if(f)f.classList.toggle("bad",!!msg);
+    if(n==="category")["id_main_category","id_sub_category"].forEach(function(i){var c=$(i);if(c)c.classList.toggle("bad",!!msg)})}
   function isAuc(){var r=document.querySelector("input[name=listing_type]:checked");return !!r&&r.value==="auction"}
   function sync(){var dt=new DataTransfer();photos.forEach(function(p){dt.items.add(p.f)});input.files=dt.files}
 
@@ -168,18 +169,23 @@
   document.querySelectorAll("input[name=listing_type]").forEach(function(r){r.addEventListener("change",syncType)});
   ["id_title","id_category","id_condition","id_description","id_price","id_original_price","id_delivery_fee","id_duration","id_quantity","id_allow_cod"].forEach(function(i){var el=$(i);if(el)el.addEventListener("input",preview)});
 
+  function target(n){
+    if(n==="photos")return $("drop");
+    if(n==="category"&&$("id_main_category")){var s=$("id_sub_category");return(s&&!s.hidden&&$("id_main_category").value)?s:$("id_main_category")}
+    return $("id_"+n);
+  }
   $("sell-form").addEventListener("submit",function(e){
     var ok=true,first=null;
     function bad(n,msg){setErr(n,msg);if(msg){ok=false;if(!first)first=n}}
     bad("photos",(photos.length+keptCount())?"":"Add at least one photo.");
     bad("title",$("id_title").value.trim().length>=5?"":"Enter a title of at least 5 characters.");
-    bad("category",$("id_category").value?"":"Choose a category.");
+    bad("category",$("id_category").value?"":($("id_sub_category")&&!$("id_sub_category").hidden?"Choose a sub category.":"Choose a category."));
     bad("description",$("id_description").value.trim().length>=20?"":"Describe your item in at least 20 characters.");
     var price=+$("id_price").value,orig=+$("id_original_price").value;
     bad("price",price>0?"":(isAuc()?"Enter a starting bid.":"Enter a price."));
     bad("original_price",(!isAuc()&&orig&&orig<=price)?"The original price must be higher than your price.":"");
     bad("delivery_fee",(!$("id_free_delivery").checked&&!(+$("id_delivery_fee").value>0))?"Enter a delivery fee, or choose free delivery.":"");
-    if(!ok){e.preventDefault();var el=first==="photos"?$("drop"):$("id_"+first);el.scrollIntoView({block:"center"});if(first!=="photos")el.focus()}
+    if(!ok){e.preventDefault();var el=target(first);el.scrollIntoView({block:"center"});if(first!=="photos")el.focus()}
   });
   // Show only the product details (brand, size...) that fit the chosen category.
   var pmap=JSON.parse(document.getElementById("param-map").textContent),catSel=$("id_category");
@@ -189,5 +195,52 @@
   }
   catSel.addEventListener("change",syncParams);syncParams();
   syncType();
+
+  // Two-step category picker: choose a category, then (if it has any) a sub category.
+  // The normal category dropdown stays in the page, hidden, and still holds the value that gets submitted.
+  fetch("{% url 'category_tree' %}",{credentials:"same-origin",headers:{"Accept":"application/json"}})
+    .then(function(r){if(!r.ok)throw new Error("bad response");return r.json()})
+    .then(buildPicker)
+    .catch(function(){/* leave the normal dropdown as it is */});
+
+  function buildPicker(tree){
+    var byId={},parentOf={};
+    tree.forEach(function(m){byId[m.id]=m;m.children.forEach(function(c){byId[c.id]=c;parentOf[c.id]=m.id})});
+    var wrap=document.createElement("div"),main=document.createElement("select"),sub=document.createElement("select");
+    main.className=sub.className=catSel.className;
+    main.id="id_main_category";sub.id="id_sub_category";
+    main.setAttribute("aria-label","Category");sub.setAttribute("aria-label","Sub category");
+    sub.style.marginTop="8px";
+    function opt(v,t){var o=document.createElement("option");o.value=v;o.textContent=t;return o}
+    function showSub(on){sub.hidden=!on;sub.style.display=on?"":"none"}
+    function fire(){["input","change"].forEach(function(n){catSel.dispatchEvent(new Event(n,{bubbles:true}))})}
+    main.appendChild(opt("","Choose a category…"));
+    tree.forEach(function(c){main.appendChild(opt(c.id,c.name))});
+    showSub(false);
+
+    function syncSub(announce){
+      var c=byId[main.value];
+      if(c&&c.children.length){
+        sub.innerHTML="";sub.appendChild(opt("","Choose a sub category…"));
+        c.children.forEach(function(x){sub.appendChild(opt(x.id,x.name))});
+        showSub(true);catSel.value="";            // not complete until a sub category is chosen
+      }else{
+        showSub(false);sub.innerHTML="";catSel.value=main.value;
+      }
+      if(announce)fire();
+    }
+    main.addEventListener("change",function(){setErr("category","");syncSub(true)});
+    sub.addEventListener("change",function(){setErr("category","");catSel.value=sub.value;fire()});
+
+    // Start from whatever the form already holds (editing a listing, or the page re-shown after an error).
+    var cur=parseInt(catSel.value,10);
+    if(parentOf[cur]){main.value=String(parentOf[cur]);syncSub(false);sub.value=String(cur);catSel.value=String(cur)}
+    else if(byId[cur]){main.value=String(cur);syncSub(false);if(byId[cur].children.length)catSel.value=String(cur)}  // keep an older main-level choice until changed
+
+    catSel.style.display="none";
+    var lab=document.querySelector('label[for="id_category"]');if(lab)lab.htmlFor="id_main_category";
+    wrap.appendChild(main);wrap.appendChild(sub);
+    catSel.parentNode.insertBefore(wrap,catSel);
+  }
 })();
 </script>{% endblock %}

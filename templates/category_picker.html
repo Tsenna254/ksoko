@@ -1,0 +1,93 @@
+{# Two-step category picker for the sell/edit listing page. Include it AFTER the form, e.g. {% include "category_picker.html" %} #}
+<script>
+(function () {
+  // The form's normal category dropdown stays in the page (hidden) and is what actually gets submitted,
+  // so the server-side checks are unchanged and the page still works if this script can't load.
+  var original = document.querySelector('select[name="category"]');
+  if (!original) return;
+
+  fetch("{% url 'category_tree' %}", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+    .then(function (r) { if (!r.ok) throw new Error("bad response"); return r.json(); })
+    .then(build)
+    .catch(function () { /* leave the normal dropdown as it is */ });
+
+  function option(value, text) {
+    var o = document.createElement("option");
+    o.value = value;
+    o.textContent = text;
+    return o;
+  }
+
+  function build(tree) {
+    var byId = {}, parentOf = {};
+    tree.forEach(function (main) {
+      byId[main.id] = main;
+      main.children.forEach(function (sub) { byId[sub.id] = sub; parentOf[sub.id] = main.id; });
+    });
+
+    var wrap = document.createElement("div");
+    var main = document.createElement("select");
+    var sub = document.createElement("select");
+    main.className = sub.className = original.className;
+    main.id = "id_main_category";
+    sub.id = "id_sub_category";
+    main.setAttribute("aria-label", "Category");
+    sub.setAttribute("aria-label", "Sub category");
+    main.required = true;
+    sub.hidden = true;
+    sub.style.marginTop = "8px";
+
+    main.appendChild(option("", "Choose a category…"));
+    tree.forEach(function (c) { main.appendChild(option(c.id, c.name)); });
+
+    function fillSub(children) {
+      sub.innerHTML = "";
+      sub.appendChild(option("", "Choose a sub category…"));
+      children.forEach(function (c) { sub.appendChild(option(c.id, c.name)); });
+    }
+
+    function sync(fire) {
+      var chosen = byId[main.value];
+      if (chosen && chosen.children.length) {
+        fillSub(chosen.children);
+        sub.hidden = false;
+        sub.required = true;
+        original.value = "";                      // not complete until a sub category is chosen
+      } else {
+        sub.hidden = true;
+        sub.required = false;
+        sub.innerHTML = "";
+        original.value = main.value;
+      }
+      if (fire) original.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    main.addEventListener("change", function () { sync(true); });
+    sub.addEventListener("change", function () {
+      original.value = sub.value;
+      original.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Start from whatever the form already holds (editing a listing, or the page re-shown after an error).
+    var current = parseInt(original.value, 10);
+    if (parentOf[current]) {
+      main.value = String(parentOf[current]);
+      sync(false);
+      sub.value = String(current);
+      original.value = String(current);
+    } else if (byId[current]) {
+      main.value = String(current);
+      sync(false);
+      if (byId[current].children.length) original.value = String(current);   // keep an older main-level choice until changed
+    }
+
+    original.removeAttribute("required");         // hidden fields can't show a "please fill this in" message
+    original.style.display = "none";
+    var label = document.querySelector('label[for="' + original.id + '"]');
+    if (label) label.htmlFor = main.id;
+    wrap.appendChild(main);
+    wrap.appendChild(sub);
+    original.parentNode.insertBefore(wrap, original);
+  }
+})();
+</script>
