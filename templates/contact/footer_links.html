@@ -1,0 +1,12 @@
+<div class="contact-links">
+  <strong>Contact us</strong>
+  <ul>
+    {% if contact_email %}<li><a href="mailto:{{ contact_email }}">Email: {{ contact_email }}</a></li>{% endif %}
+    {% if whatsapp_url %}<li><a href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer">Chat on WhatsApp</a></li>{% endif %}
+    <li><a href="#" data-open-contact>Send us a message</a></li>
+  </ul>
+</div>
+<style>
+  .contact-links ul { list-style: none; margin: 6px 0 0; padding: 0; }
+  .contact-links li { margin: 4px 0; }
+</style>

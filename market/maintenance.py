@@ -8,7 +8,7 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from . import campaigns, emailer
-from .models import OutboundEmail, PageView, Payment, SearchEvent, VerificationCode
+from .models import OutboundEmail, PageView, Payment, SearchEvent, SupportThread, VerificationCode
 
 logger = logging.getLogger(__name__)
 
@@ -38,4 +38,5 @@ def run_hourly():
     ).delete()                                                 # sign-ups that never confirmed their email
     PageView.objects.filter(created_at__lt=now - timedelta(days=settings.PAGEVIEW_RETENTION_DAYS)).delete()
     SearchEvent.objects.filter(created_at__lt=now - timedelta(days=settings.SEARCH_HISTORY_DAYS)).delete()
+    SupportThread.objects.filter(last_message_at__lt=now - timedelta(days=getattr(settings, "SUPPORT_RETENTION_DAYS", 90))).delete()
     call_command("clearsessions")

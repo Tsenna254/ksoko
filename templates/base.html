@@ -1,4 +1,4 @@
-{% load static humanize %}<!DOCTYPE html>
+{% load static humanize contact_tags %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -26,7 +26,7 @@
       <a href="{% url 'seller_campaigns' %}">Campaigns</a>
       <a href="{% url 'my_orders' %}">My orders</a>
       <a href="{% url 'seller_sales' %}">My sales</a>
-      {% if user.is_staff %}<a href="{% url 'dashboard' %}">Dashboard</a>{% endif %}
+      {% if user.is_staff %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'support_inbox' %}">Support chat</a>{% endif %}
       <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="linkbtn">Sign out</button></form>
     {% endif %}
   </div>
@@ -79,6 +79,7 @@
 <footer><div class="wrap">
   <a class="logo" href="{% url 'home' %}">{% if site.logo %}<img class="logoimg" src="{{ site.logo.url }}" alt="{{ site.site_name }}">{% else %}<span class="logomark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l1 12H5z"/><path d="M9 8a3 3 0 016 0"/></svg></span>ksoko{% endif %}</a>
   <p>The online market for people who love a good find. Prices are in Kenyan shillings (KES).</p>
+  {% contact_links %}
 </div></footer>
 <nav class="tabbar" aria-label="Quick navigation">
   <a href="{% url 'home' %}"{% if request.path == '/' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9H3z"/></svg>Home</a>
@@ -87,6 +88,7 @@
   <a href="{% if user.is_authenticated %}{% url 'my_orders' %}{% else %}{% url 'login' %}{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Account</a>
 </nav>
 <script>document.addEventListener("click",function(e){var d=document.getElementById("cartmenu");if(d&&d.open&&!d.contains(e.target))d.open=false});</script>
+{% contact_widget %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

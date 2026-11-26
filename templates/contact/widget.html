@@ -1,0 +1,239 @@
+<div id="ctc" class="ctc" data-poll-url="{% url 'support_poll' %}" data-thread="{% if has_thread %}1{% else %}0{% endif %}">
+  <button type="button" id="ctc-toggle" class="ctc-fab" aria-expanded="false" aria-controls="ctc-panel">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>
+    <span class="ctc-fab-label">Contact us</span>
+    <span id="ctc-badge" class="ctc-badge" hidden>0</span>
+  </button>
+
+  <section id="ctc-panel" class="ctc-panel" role="dialog" aria-label="Live chat" hidden>
+    <header class="ctc-head">
+      <div><strong>Chat with us</strong><small id="ctc-status">Leave a message and we'll reply by email</small></div>
+      <button type="button" id="ctc-close" class="ctc-x" aria-label="Close chat window">&times;</button>
+    </header>
+
+    <div id="ctc-log" class="ctc-log" role="log" aria-live="polite">
+      <div class="ctc-row theirs"><span class="ctc-by">Ksoko Support</span><div class="ctc-text">Hi 👋 How can we help? Write to us here.{% if whatsapp_url %} You can also message us on WhatsApp below.{% endif %}</div></div>
+    </div>
+    <div id="ctc-note" class="ctc-note" role="status"></div>
+
+    <form id="ctc-form" class="ctc-form" method="post" action="{% url 'support_send' %}">
+      {% csrf_token %}
+      <input class="ctc-trap" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      {% if not signed_in or not user_email %}<div id="ctc-who" class="ctc-who">
+        {% if not signed_in %}<input type="text" name="name" placeholder="Your name" maxlength="80" autocomplete="name" required>{% endif %}
+        <input type="email" name="email" placeholder="Your email, so we can reach you if you leave" maxlength="254" autocomplete="email" required>
+      </div>{% endif %}
+      <div class="ctc-compose">
+        <textarea name="body" rows="2" maxlength="1000" placeholder="Write your message…" aria-label="Your message" required></textarea>
+        <button type="submit" id="ctc-send" class="solid">Send</button>
+      </div>
+    </form>
+
+    {% if whatsapp_url or contact_email %}<div class="ctc-alt">
+      {% if whatsapp_url %}<a href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer">Chat on WhatsApp</a>{% endif %}
+      {% if whatsapp_url and contact_email %} · {% endif %}
+      {% if contact_email %}<a href="mailto:{{ contact_email }}">Email us</a>{% endif %}
+    </div>{% endif %}
+  </section>
+</div>
+
+<style>
+  /* Everything is scoped under #ctc so it can't clash with the site's own styles. */
+  #ctc { --ctc-accent: var(--accent, var(--brand, #1a6ef0)); position: fixed; right: 16px; bottom: 16px; z-index: 1000; font-size: 15px; }
+  #ctc .ctc-fab { position: relative; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 18px; border: 0; border-radius: 26px; cursor: pointer;
+                  background: var(--ctc-accent); color: #fff; font: inherit; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+  #ctc .ctc-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: #d93025;
+                    color: #fff; font-size: 12px; line-height: 20px; text-align: center; }
+  #ctc .ctc-badge[hidden] { display: none; }
+  #ctc .ctc-panel { position: absolute; right: 0; bottom: 64px; width: min(360px, calc(100vw - 32px)); max-height: min(580px, calc(100vh - 170px));
+                    display: flex; flex-direction: column; overflow: hidden; background: Canvas; color: CanvasText;
+                    border: 1px solid rgba(127,127,127,.35); border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.28); }
+  #ctc .ctc-panel[hidden] { display: none; }
+  #ctc .ctc-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: var(--ctc-accent); color: #fff; }
+  #ctc .ctc-head small { display: block; opacity: .9; font-size: 12px; }
+  #ctc .ctc-x { border: 0; background: transparent; color: inherit; font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px; }
+  #ctc .ctc-log { flex: 1; min-height: 120px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #ctc .ctc-row { display: flex; flex-direction: column; max-width: 85%; align-self: flex-start; }
+  #ctc .ctc-row.mine { align-self: flex-end; align-items: flex-end; }
+  #ctc .ctc-by { font-size: 11px; opacity: .65; margin: 0 6px 2px; }
+  #ctc .ctc-text { padding: 8px 12px; border-radius: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(127,127,127,.18); }
+  #ctc .ctc-row.mine .ctc-text { background: var(--ctc-accent); color: #fff; }
+  #ctc .ctc-time { font-size: 11px; opacity: .55; margin: 2px 6px 0; }
+  #ctc .ctc-notice { align-self: center; max-width: 92%; text-align: center; font-size: 12.5px; opacity: .7; }
+  #ctc .ctc-note { min-height: 16px; padding: 0 14px 4px; font-size: 12.5px; color: #d93025; }
+  #ctc .ctc-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid rgba(127,127,127,.3); margin: 0; }
+  #ctc .ctc-who { display: flex; flex-direction: column; gap: 6px; }
+  #ctc .ctc-form input[type=text], #ctc .ctc-form input[type=email], #ctc .ctc-form textarea { width: 100%; box-sizing: border-box; margin: 0; padding: 8px 10px; font: inherit; }
+  #ctc .ctc-compose { display: flex; gap: 6px; align-items: flex-end; }
+  #ctc .ctc-compose textarea { flex: 1; resize: none; max-height: 100px; }
+  #ctc .ctc-trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  #ctc .ctc-alt { padding: 0 14px 12px; font-size: 13px; text-align: center; }
+  @media (max-width: 480px) { #ctc .ctc-fab-label { display: none; } #ctc .ctc-fab { width: 52px; padding: 0; justify-content: center; } }
+</style>
+
+<script>
+(function () {
+  var root = document.getElementById("ctc");
+  if (!root) return;
+  var pollUrl = root.dataset.pollUrl;
+  var toggle = document.getElementById("ctc-toggle"), panel = document.getElementById("ctc-panel"),
+      closeBtn = document.getElementById("ctc-close"), form = document.getElementById("ctc-form"),
+      log = document.getElementById("ctc-log"), note = document.getElementById("ctc-note"),
+      sendBtn = document.getElementById("ctc-send"), badge = document.getElementById("ctc-badge"),
+      status = document.getElementById("ctc-status"), who = document.getElementById("ctc-who"),
+      box = form.elements["body"];
+  var hasThread = root.dataset.thread === "1";
+  var lastId = 0, seen = {}, timer = null, slow = 1, online = false, told = false;
+
+  function store(key, value) { try { sessionStorage.setItem(key, value); } catch (e) {} }
+  function stored(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+  function isOpen() { return !panel.hidden; }
+  function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
+
+  function setStatus(isOnline) {
+    online = isOnline;
+    status.textContent = isOnline ? "\u25CF Online now" : "Leave a message and we'll reply by email";
+  }
+  function setBadge(n) { badge.hidden = !n; badge.textContent = n > 9 ? "9+" : String(n); }
+  function setWho(show) {          // the name and email boxes are only needed for the first message
+    if (!who) return;
+    who.style.display = show ? "" : "none";
+    Array.prototype.forEach.call(who.querySelectorAll("input"), function (el) { el.disabled = !show; });
+  }
+
+  function addMessage(m) {
+    if (seen[m.id]) return;
+    seen[m.id] = true;
+    if (m.id > lastId) lastId = m.id;
+    var row = document.createElement("div");
+    row.className = "ctc-row " + (m.mine ? "mine" : "theirs");
+    if (!m.mine) {
+      var by = document.createElement("span");
+      by.className = "ctc-by";
+      by.textContent = m.who;
+      row.appendChild(by);
+    }
+    var bubble = document.createElement("div");
+    bubble.className = "ctc-text";
+    bubble.textContent = m.body;               // textContent, never innerHTML: nothing typed can inject HTML
+    var time = document.createElement("span");
+    time.className = "ctc-time";
+    time.textContent = m.time;
+    row.appendChild(bubble);
+    row.appendChild(time);
+    log.appendChild(row);
+  }
+  function addNotice(text) {
+    var line = document.createElement("div");
+    line.className = "ctc-notice";
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function interval() { return (isOpen() ? (hasThread ? 4000 : 15000) : 20000) * slow; }
+  function schedule() {
+    clearTimeout(timer);
+    if (!hasThread && !isOpen()) return;       // nothing to watch yet
+    timer = setTimeout(poll, interval());
+  }
+  function poll() {
+    clearTimeout(timer);
+    if (document.visibilityState !== "visible") { schedule(); return; }
+    var open = isOpen();
+    fetch(pollUrl + "?open=" + (open ? "1" : "0") + "&after=" + lastId,
+          { credentials: "same-origin", cache: "no-store", headers: { "Accept": "application/json" } })
+      .then(function (r) {
+        if (r.status === 429) { slow = Math.min(slow * 2, 8); return null; }
+        if (!r.ok) throw new Error("bad response");
+        slow = 1;
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d) return;
+        setStatus(!!d.staff_online);
+        if (hasThread !== !!d.has_thread) { hasThread = !!d.has_thread; setWho(!hasThread); }
+        if (open && d.messages && d.messages.length) {
+          var stick = nearBottom();
+          d.messages.forEach(addMessage);
+          if (stick) log.scrollTop = log.scrollHeight;
+        }
+        setBadge(open ? 0 : (d.unread || 0));
+      })
+      .catch(function () { slow = Math.min(slow * 2, 8); })
+      .then(schedule);
+  }
+
+  function setOpen(open, focus) {
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    store("ctc-open", open ? "1" : "0");
+    if (open) {
+      setBadge(0);
+      if (focus !== false) {
+        var first = form.querySelector("input[name=name]:not(:disabled), input[name=email]:not(:disabled), textarea");
+        if (first) first.focus();
+      }
+      log.scrollTop = log.scrollHeight;
+      poll();
+    } else {
+      schedule();
+    }
+  }
+
+  toggle.addEventListener("click", function () { setOpen(!isOpen()); });
+  closeBtn.addEventListener("click", function () { setOpen(false); toggle.focus(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && isOpen()) { setOpen(false); toggle.focus(); }
+  });
+  document.addEventListener("click", function (e) {       // any link or button marked data-open-contact opens the chat
+    var opener = e.target.closest("[data-open-contact]");
+    if (opener) { e.preventDefault(); setOpen(true); }
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && (hasThread || isOpen())) poll();
+  });
+
+  box.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (form.requestSubmit) { form.requestSubmit(); } else { sendBtn.click(); }
+    }
+  });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!box.value.trim()) return;
+    note.textContent = "";
+    sendBtn.disabled = true;
+    fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin",
+                         headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { note.textContent = res.data.error || "Could not send. Please try again."; return; }
+        hasThread = true;
+        setWho(false);
+        addMessage(res.data.message);
+        box.value = "";
+        log.scrollTop = log.scrollHeight;
+        if (typeof res.data.staff_online === "boolean") setStatus(res.data.staff_online);
+        if (!online && !told) { told = true; addNotice("Nobody is online right now. We'll reply by email as soon as we can."); }
+        schedule();
+      })
+      .catch(function () { note.textContent = "Could not send. Check your connection and try again."; })
+      .then(function () { sendBtn.disabled = false; box.focus(); });
+  });
+
+  function placeAboveTabbar() {         // on phones the site has a bottom tab bar; keep the bubble clear of it
+    var bar = document.querySelector(".tabbar");
+    var shown = bar && getComputedStyle(bar).display !== "none";
+    root.style.bottom = shown ? (bar.offsetHeight + 12) + "px" : "";
+  }
+  placeAboveTabbar();
+  window.addEventListener("resize", placeAboveTabbar);
+
+  setWho(!hasThread);
+  if (stored("ctc-open") === "1") { setOpen(true, false); }
+  else if (hasThread) { poll(); }
+})();
+</script>

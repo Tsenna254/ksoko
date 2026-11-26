@@ -327,6 +327,53 @@ class ChatMessage(models.Model):
         return f"Order #{self.order_id}: {self.body[:40]}"
 
 
+class SupportThread(models.Model):
+    """One live-chat conversation between a website visitor (signed in or not) and the support team."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    name = models.CharField(max_length=80)
+    email = models.EmailField(blank=True)
+    is_open = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    last_message_at = models.DateTimeField(default=timezone.now, db_index=True)
+    visitor_seen_at = models.DateTimeField(null=True, blank=True)      # when the visitor's page last checked for replies
+    staff_notified_at = models.DateTimeField(null=True, blank=True)    # when the owner was last emailed about this chat
+    visitor_emailed_at = models.DateTimeField(null=True, blank=True)   # when the visitor was last emailed a reply
+
+    class Meta:
+        ordering = ["-last_message_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.email or 'no email'})"
+
+
+class SupportMessage(models.Model):
+    class Sender(models.TextChoices):
+        VISITOR = "visitor", "Visitor"
+        STAFF = "staff", "Staff"
+
+    thread = models.ForeignKey(SupportThread, on_delete=models.CASCADE, related_name="messages")
+    sender = models.CharField(max_length=8, choices=Sender.choices)
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    body = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(default=timezone.now)
+    read_at = models.DateTimeField(null=True, blank=True)              # when the other side saw it
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["thread", "id"])]
+
+    def __str__(self):
+        return f"{self.get_sender_display()}: {self.body[:40]}"
+
+
+class SupportStaffSeen(models.Model):
+    """When each staff member last had the support inbox open. It drives the visitor's "Online now" label."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    seen_at = models.DateTimeField(default=timezone.now)
+
+
 RATING = [MinValueValidator(1), MaxValueValidator(5)]
 
 

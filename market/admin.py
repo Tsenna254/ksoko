@@ -277,3 +277,29 @@ class ChatMessageAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+from .models import SupportMessage, SupportThread  # noqa: E402
+
+
+class SupportMessageInline(admin.TabularInline):
+    model = SupportMessage
+    extra = 0
+    fields = ("created_at", "sender", "staff", "body")
+    readonly_fields = ("created_at", "sender", "staff", "body")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(SupportThread)
+class SupportThreadAdmin(admin.ModelAdmin):
+    """Live-chat conversations, for review. Answer chats from the live inbox at /manage/support/."""
+    list_display = ("name", "email", "is_open", "last_message_at")
+    list_filter = ("is_open",)
+    search_fields = ("name", "email")
+    readonly_fields = [f.name for f in SupportThread._meta.fields]
+    inlines = [SupportMessageInline]
+
+    def has_add_permission(self, request):
+        return False

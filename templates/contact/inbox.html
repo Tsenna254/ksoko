@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Support chat{% endblock %}
+{% block content %}
+<style>
+  .sup [hidden] { display: none !important; }
+  .sup { display: grid; grid-template-columns: 300px 1fr; gap: 14px; height: calc(100vh - 230px); min-height: 440px; margin-bottom: 28px; }
+  .sup-list, .sup-main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid rgba(127,127,127,.3); border-radius: 12px; }
+  .sup-list-body { flex: 1; overflow-y: auto; }
+  .sup-item { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid rgba(127,127,127,.2);
+              background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  .sup-item.active { background: rgba(127,127,127,.16); }
+  .sup-item.closed { opacity: .6; }
+  .sup-item .line { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .sup-item .meta, .sup-top .meta { font-size: 12.5px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sup-badge { min-width: 20px; padding: 0 6px; border-radius: 10px; background: #d93025; color: #fff; font-size: 12px; line-height: 20px; text-align: center; }
+  .sup-empty { margin: 16px; text-align: center; opacity: .65; font-size: 14px; }
+  .sup-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid rgba(127,127,127,.3); }
+  .sup-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .sup-row { display: flex; flex-direction: column; max-width: 80%; align-self: flex-start; }
+  .sup-row.mine { align-self: flex-end; align-items: flex-end; }
+  .sup-by { font-size: 11px; opacity: .65; margin: 0 6px 2px; }
+  .sup-text { padding: 8px 12px; border-radius: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(127,127,127,.18); }
+  .sup-row.mine .sup-text { background: var(--accent, var(--brand, #1a6ef0)); color: #fff; }
+  .sup-time { font-size: 11px; opacity: .55; margin: 2px 6px 0; }
+  .sup-note { min-height: 16px; padding: 0 14px 4px; font-size: 12.5px; color: #d93025; }
+  .sup-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid rgba(127,127,127,.3); margin: 0; }
+  .sup-form textarea { flex: 1; resize: none; max-height: 120px; margin: 0; padding: 8px 10px; font: inherit; }
+  @media (max-width: 800px) { .sup { grid-template-columns: 1fr; height: auto; } .sup-list { max-height: 240px; } .sup-main { height: 70vh; } }
+</style>
+
+<div class="hd" style="margin-top:28px"><h2>Support chat</h2><label class="meta"><input type="checkbox" id="sup-closed"> Show closed chats</label></div>
+<p class="meta">Visitors see "Online now" while this page is open. When it isn't, new messages are emailed to you instead.</p>
+
+<div class="sup" id="sup" data-threads-url="{% url 'support_threads' %}" data-messages-url="{% url 'support_thread_messages' 0 %}"
+     data-reply-url="{% url 'support_reply' 0 %}" data-toggle-url="{% url 'support_toggle' 0 %}">
+  <aside class="sup-list"><div class="sup-list-body" id="sup-list"><p class="sup-empty">No chats yet.</p></div></aside>
+  <section class="sup-main">
+    <div class="sup-top" id="sup-top" hidden>
+      <div><strong id="sup-name"></strong><div class="meta" id="sup-meta"></div></div>
+      <button type="button" class="ghost sm" id="sup-toggle">Close chat</button>
+    </div>
+    <div class="sup-log" id="sup-log" role="log" aria-live="polite"><p class="sup-empty" id="sup-hint">Choose a chat on the left.</p></div>
+    <div class="sup-note" id="sup-note" role="status"></div>
+    <form id="sup-form" class="sup-form" hidden>
+      {% csrf_token %}
+      <textarea name="body" rows="2" maxlength="1000" placeholder="Write a reply…" aria-label="Your reply" required></textarea>
+      <button type="submit" class="solid" id="sup-send">Send</button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function () {
+  var root = document.getElementById("sup");
+  var urls = { threads: root.dataset.threadsUrl, messages: root.dataset.messagesUrl, reply: root.dataset.replyUrl, toggle: root.dataset.toggleUrl };
+  var list = document.getElementById("sup-list"), log = document.getElementById("sup-log"), top = document.getElementById("sup-top"),
+      nameEl = document.getElementById("sup-name"), metaEl = document.getElementById("sup-meta"), toggleBtn = document.getElementById("sup-toggle"),
+      note = document.getElementById("sup-note"), form = document.getElementById("sup-form"), sendBtn = document.getElementById("sup-send"),
+      closedBox = document.getElementById("sup-closed"), box = form.elements["body"];
+  var baseTitle = document.title, current = null, lastId = 0, seen = {}, lastUnread = null, audio = null;
+  var fetchOpts = { credentials: "same-origin", cache: "no-store", headers: { "Accept": "application/json" } };
+
+  function url(kind, id) { return urls[kind].replace("/0/", "/" + id + "/"); }
+  function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;          // textContent only: visitors can't inject HTML
+    return node;
+  }
+
+  // A short beep when a new visitor message arrives (browsers allow sound after your first click on the page).
+  document.addEventListener("click", function () {
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  });
+  function beep() {
+    if (!audio) return;
+    try {
+      if (audio.state === "suspended") audio.resume();
+      var osc = audio.createOscillator(), gain = audio.createGain();
+      osc.connect(gain); gain.connect(audio.destination);
+      osc.frequency.value = 880; gain.gain.value = 0.05;
+      osc.start(); osc.stop(audio.currentTime + 0.15);
+    } catch (e) {}
+  }
+
+  function renderList(threads) {
+    list.innerHTML = "";
+    if (!threads.length) { list.appendChild(el("p", "sup-empty", "No chats yet.")); return; }
+    threads.forEach(function (t) {
+      var item = el("button", "sup-item" + (t.id === current ? " active" : "") + (t.is_open ? "" : " closed"));
+      item.type = "button";
+      item.dataset.id = t.id;
+      var line = el("div", "line");
+      line.appendChild(el("strong", "", t.name));
+      if (t.unread) line.appendChild(el("span", "sup-badge", String(t.unread)));
+      item.appendChild(line);
+      item.appendChild(el("div", "meta", t.preview));
+      item.appendChild(el("div", "meta", t.time + (t.is_open ? "" : " \u00B7 closed")));
+      list.appendChild(item);
+    });
+  }
+
+  function pollThreads() {
+    fetch(urls.threads + (closedBox.checked ? "?closed=1" : ""), fetchOpts)
+      .then(function (r) { if (!r.ok) throw new Error("bad response"); return r.json(); })
+      .then(function (d) {
+        renderList(d.threads);
+        document.title = (d.unread ? "(" + d.unread + ") " : "") + baseTitle;
+        if (lastUnread !== null && d.unread > lastUnread) beep();
+        lastUnread = d.unread;
+      })
+      .catch(function () {});
+  }
+
+  function addMessage(m) {
+    if (seen[m.id]) return;
+    seen[m.id] = true;
+    if (m.id > lastId) lastId = m.id;
+    var row = el("div", "sup-row" + (m.mine ? " mine" : ""));
+    row.appendChild(el("span", "sup-by", m.who));
+    row.appendChild(el("div", "sup-text", m.body));
+    row.appendChild(el("span", "sup-time", m.time));
+    log.appendChild(row);
+  }
+
+  function showThread(t) {
+    nameEl.textContent = t.name;
+    var bits = [];
+    if (t.email) bits.push(t.email);
+    if (t.signed_in_as) bits.push("signed in as " + t.signed_in_as);
+    bits.push(t.visitor_here ? "on the site now" : "not on the site");
+    metaEl.textContent = bits.join(" \u00B7 ");
+    toggleBtn.textContent = t.is_open ? "Close chat" : "Reopen chat";
+  }
+
+  function loadMessages() {
+    if (!current || document.visibilityState !== "visible") return;
+    var id = current, first = lastId === 0;
+    fetch(url("messages", id) + "?after=" + lastId, fetchOpts)
+      .then(function (r) { if (!r.ok) throw new Error("bad response"); return r.json(); })
+      .then(function (d) {
+        if (id !== current) return;                 // another chat was opened meanwhile
+        var stick = first || nearBottom();
+        d.messages.forEach(addMessage);
+        if (d.messages.length && stick) log.scrollTop = log.scrollHeight;
+        showThread(d.thread);
+      })
+      .catch(function () {});
+  }
+
+  function openThread(id) {
+    current = id; lastId = 0; seen = {};
+    log.innerHTML = "";
+    top.hidden = false; form.hidden = false; note.textContent = "";
+    loadMessages();
+    pollThreads();
+    box.focus();
+  }
+
+  list.addEventListener("click", function (e) {
+    var item = e.target.closest(".sup-item");
+    if (item) openThread(parseInt(item.dataset.id, 10));
+  });
+  closedBox.addEventListener("change", pollThreads);
+
+  box.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (form.requestSubmit) { form.requestSubmit(); } else { sendBtn.click(); }
+    }
+  });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!current || !box.value.trim()) return;
+    note.textContent = "";
+    sendBtn.disabled = true;
+    fetch(url("reply", current), { method: "POST", body: new FormData(form), credentials: "same-origin",
+                                   headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { note.textContent = res.data.error || "Could not send. Please try again."; return; }
+        addMessage(res.data.message);
+        box.value = "";
+        log.scrollTop = log.scrollHeight;
+        pollThreads();
+      })
+      .catch(function () { note.textContent = "Could not send. Check your connection and try again."; })
+      .then(function () { sendBtn.disabled = false; box.focus(); });
+  });
+
+  toggleBtn.addEventListener("click", function () {
+    if (!current) return;
+    fetch(url("toggle", current), { method: "POST", body: new FormData(form), credentials: "same-origin",
+                                    headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { toggleBtn.textContent = d.is_open ? "Close chat" : "Reopen chat"; pollThreads(); })
+      .catch(function () {});
+  });
+
+  pollThreads();
+  setInterval(pollThreads, 5000);      // also tells visitors that someone is online
+  setInterval(loadMessages, 3000);
+})();
+</script>
+{% endblock %}
