@@ -8,6 +8,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
 <link rel="stylesheet" href="{% static 'css/ksoko.css' %}">
+<style>
+  /* Category pop-up: sub categories appear under a category when it is hovered, tapped or opened with the arrow key. */
+  .catdata { display: none; }
+  nav.cats a[data-sub]::after { content: "\25BE"; font-size: .75em; margin-left: 5px; opacity: .55; }
+  nav.cats a.catopen { text-decoration: underline; text-underline-offset: 7px; }
+  .catpop { position: fixed; z-index: 900; box-sizing: border-box; min-width: 240px; max-width: min(580px, calc(100vw - 16px)); max-height: min(70vh, 520px);
+            overflow-y: auto; padding: 12px 14px 14px; background: Canvas; color: CanvasText; border: 1px solid rgba(127,127,127,.35);
+            border-radius: 0 0 12px 12px; box-shadow: 0 12px 28px rgba(0,0,0,.2); }
+  .catpop[hidden] { display: none; }
+  .catpop .catall { display: block; margin: 0 0 8px; font-weight: 700; color: inherit; text-decoration: none; }
+  .catpop ul { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 20px; }
+  .catpop li { margin: 0; break-inside: avoid; }
+  .catpop li a { display: block; padding: 6px 0; color: inherit; text-decoration: none; }
+  .catpop a:hover, .catpop a:focus-visible { text-decoration: underline; }
+  @media (max-width: 640px) { .catpop { left: 8px !important; right: 8px; width: auto !important; max-width: none; } .catpop ul { columns: 1; } }
+</style>
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -66,11 +82,16 @@
     </div>
     <a class="sellbtn" href="{% url 'sell' %}">Sell an item</a>
   </div>
-  <nav class="cats"><div class="wrap">
-    {% for c in nav_categories %}<a href="{% url 'listing_list' %}?category={{ c.slug }}">{{ c.name }}</a>{% endfor %}
+  <nav class="cats" aria-label="Categories"><div class="wrap">
+    {% for c in nav_categories %}{% with subs=c.children.all %}<a href="{% url 'listing_list' %}?category={{ c.slug }}"{% if subs %} data-sub="catsub-{{ c.pk }}" aria-haspopup="true" aria-expanded="false"{% endif %}>{{ c.name }}</a>{% endwith %}{% endfor %}
     <a class="sale" href="{% url 'listing_list' %}?type=auction">Auctions</a>
   </div></nav>
 </header>
+<div class="catdata">{% for c in nav_categories %}{% with subs=c.children.all %}{% if subs %}
+  <ul id="catsub-{{ c.pk }}" data-title="{{ c.name }}" data-all="{% url 'listing_list' %}?category={{ c.slug }}">{% for sub in subs %}
+    <li><a href="{% url 'listing_list' %}?category={{ sub.slug }}">{{ sub.name }}</a></li>{% endfor %}
+  </ul>{% endif %}{% endwith %}{% endfor %}
+</div>
 
 {% if messages %}<div class="wrap msgs">{% for m in messages %}<p class="msg {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}</div>{% endif %}
 <main class="wrap">{% block content %}{% endblock %}</main>
@@ -88,6 +109,100 @@
   <a href="{% if user.is_authenticated %}{% url 'my_orders' %}{% else %}{% url 'login' %}{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Account</a>
 </nav>
 <script>document.addEventListener("click",function(e){var d=document.getElementById("cartmenu");if(d&&d.open&&!d.contains(e.target))d.open=false});</script>
+<script>
+(function () {
+  // Category pop-up. Hover (mouse), tap (phones: first tap opens, second tap goes to the category) or ArrowDown (keyboard).
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav.cats a[data-sub]"));
+  if (!links.length) return;
+  var hoverOk = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
+  var pop = document.createElement("div");
+  pop.className = "catpop";
+  pop.hidden = true;
+  document.body.appendChild(pop);
+  var current = null, openTimer = null, closeTimer = null;
+
+  function build(link) {
+    var src = document.getElementById(link.dataset.sub);
+    pop.innerHTML = "";
+    var all = document.createElement("a");
+    all.className = "catall";
+    all.href = src.dataset.all;
+    all.textContent = "All " + src.dataset.title + " \u2192";
+    pop.appendChild(all);
+    var ul = document.createElement("ul");
+    Array.prototype.forEach.call(src.querySelectorAll("a"), function (a) {
+      var li = document.createElement("li"), copy = document.createElement("a");
+      copy.href = a.getAttribute("href");
+      copy.textContent = a.textContent;
+      li.appendChild(copy);
+      ul.appendChild(li);
+    });
+    pop.appendChild(ul);
+  }
+  function place(link) {
+    var r = link.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+    pop.style.top = Math.round(r.bottom) + "px";
+    pop.style.left = Math.round(Math.max(8, Math.min(r.left, vw - pop.offsetWidth - 8))) + "px";
+  }
+  function open(link) {
+    clearTimeout(openTimer); clearTimeout(closeTimer);
+    if (current === link && !pop.hidden) return;
+    if (current) { current.setAttribute("aria-expanded", "false"); current.classList.remove("catopen"); }
+    build(link);
+    pop.hidden = false;
+    place(link);
+    current = link;
+    link.setAttribute("aria-expanded", "true");
+    link.classList.add("catopen");
+  }
+  function close() {
+    clearTimeout(openTimer); clearTimeout(closeTimer);
+    if (!current) return;
+    pop.hidden = true;
+    current.setAttribute("aria-expanded", "false");
+    current.classList.remove("catopen");
+    current = null;
+  }
+  function closeSoon() { clearTimeout(openTimer); clearTimeout(closeTimer); closeTimer = setTimeout(close, 180); }
+
+  links.forEach(function (link) {
+    if (hoverOk) {
+      link.addEventListener("mouseenter", function () {
+        clearTimeout(closeTimer); clearTimeout(openTimer);
+        openTimer = setTimeout(function () { open(link); }, 70);
+      });
+      link.addEventListener("mouseleave", closeSoon);
+    }
+    link.addEventListener("click", function (e) {
+      if (!hoverOk && !(current === link && !pop.hidden)) { e.preventDefault(); open(link); }
+    });
+    link.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault(); open(link);
+        var first = pop.querySelector("a");
+        if (first) first.focus();
+      } else if (e.key === "Escape") { close(); }
+    });
+  });
+  if (hoverOk) {            // moving onto a category without sub categories (or Auctions) closes the pop-up
+    Array.prototype.forEach.call(document.querySelectorAll("nav.cats a:not([data-sub])"), function (a) { a.addEventListener("mouseenter", close); });
+    pop.addEventListener("mouseenter", function () { clearTimeout(closeTimer); });
+    pop.addEventListener("mouseleave", closeSoon);
+  }
+  pop.addEventListener("keydown", function (e) {
+    var items = Array.prototype.slice.call(pop.querySelectorAll("a")), i = items.indexOf(document.activeElement), back = current;
+    if (e.key === "ArrowDown") { e.preventDefault(); items[Math.min(i + 1, items.length - 1)].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (i <= 0) { close(); if (back) back.focus(); } else { items[i - 1].focus(); } }
+    else if (e.key === "Escape") { close(); if (back) back.focus(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (pop.hidden || pop.contains(e.target) || (current && current.contains(e.target))) return;
+    close();
+  });
+  document.addEventListener("scroll", function (e) { if (!pop.hidden && !pop.contains(e.target)) close(); }, true);
+  window.addEventListener("resize", close);
+})();
+</script>
 {% contact_widget %}
 {% block scripts %}{% endblock %}
 </body>
