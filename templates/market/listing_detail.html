@@ -1,13 +1,16 @@
-{% extends "base.html" %}{% load humanize market_extras %}
+{% extends "base.html" %}{% load humanize market_extras seo_tags %}
 {% block title %}{{ listing.title }}{% endblock %}
+{% block seo %}{% seo_meta title=listing.title description=listing.description image=listing.cover.image.url og_type="product" %}{% endblock %}
+{% block head %}{% if not listing.is_auction %}<meta property="product:price:amount" content="{{ listing.price|stringformat:'.2f' }}"><meta property="product:price:currency" content="KES">{% endif %}
+{% product_jsonld listing product_rating %}{% breadcrumb_jsonld listing %}{% endblock %}
 {% block content %}
 <div class="detail">
   <div>
     <div class="mainimg">
-      {% with c=listing.cover %}{% if c %}<img id="big" src="{{ c.image.url }}" alt="{{ listing.title }}">{% else %}<span class="noimg">No photo</span>{% endif %}{% endwith %}
+      {% with c=listing.cover %}{% if c %}<img id="big" src="{{ c.image.url }}" alt="{{ listing.title }}" fetchpriority="high">{% else %}<span class="noimg">No photo</span>{% endif %}{% endwith %}
     </div>
     <div class="thumbs">
-      {% for img in listing.images.all %}<button type="button" class="tn" data-src="{{ img.image.url }}" aria-label="Show photo {{ forloop.counter }}"><img src="{{ img.image.url }}" alt=""></button>{% endfor %}
+      {% for img in listing.images.all %}<button type="button" class="tn" data-src="{{ img.image.url }}" aria-label="Show photo {{ forloop.counter }}"><img src="{{ img.image.url }}" alt="" loading="lazy"></button>{% endfor %}
     </div>
   </div>
 

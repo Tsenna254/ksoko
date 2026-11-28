@@ -1,9 +1,10 @@
-{% load static humanize contact_tags %}<!DOCTYPE html>
+{% load static humanize contact_tags seo_tags %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Buy and sell almost anything{% endblock %} | {{ site.site_name }}</title>
+{% block seo %}{% seo_meta %}{% endblock %}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
@@ -25,6 +26,7 @@
   @media (max-width: 640px) { .catpop { left: 8px !important; right: 8px; width: auto !important; max-width: none; } .catpop ul { columns: 1; } }
 </style>
 {% block head %}{% endblock %}
+{% if request.path == "/" %}{% site_jsonld %}{% endif %}
 </head>
 <body>
 {% if site.site_background %}<div class="sitebg" style="background-image:url('{{ site.site_background.url }}')"></div><div class="sitebg-veil" style="--ov:{{ site.background_overlay }}%"></div>{% endif %}
